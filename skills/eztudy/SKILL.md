@@ -25,12 +25,16 @@ You (the agent) do all the bookkeeping. Everything else is created lazily:
 ```bash
 eztudy status                      # ALWAYS first: pending changes, index + wiki health
 eztudy sync                        # extract new/changed sources -> .eztudy/text, track moves/deletes
+eztudy add ../dir [--as name] [--exclude 'a,*.zip'] [--dry-run]   # copy files in from elsewhere (skips IDE/build junk, tracks origin)
 eztudy index [--rebuild]           # sync + chunk + embed into SQLite (fastembed, local)
 eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--path bio/] [--full] [--json]
 eztudy show <chunk-id> [--context 1]          # read a chunk (+ neighbours) e.g. 3fa9c2d1:12
 eztudy show <source-path> [--pages 3-5]       # read a source's extracted text (PDF pages / PPTX slides)
+eztudy show <code-file> --lines 340-375 | --symbol removeRecurse   # numbered source lines (exact line numbers)
 eztudy sources [--json]            # list tracked sources with hash, size, title, status
-eztudy wiki init | lint [--json] | log "ingest | Title" [--detail "..."]
+eztudy coverage topics.md [--out wiki/coverage.md] [--json]   # syllabus list -> covered / partial / missing per topic
+eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
+eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
 eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and interactive x.html;
                                    # warns on citation cids not in the index (--strict: exit 1)
 ```
@@ -42,7 +46,9 @@ eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and
   "text": "…chunk text…", "citation": "bio/cells.pdf (pages 4-5)"}]
 ```
 `type` is one of `pdf | docx | pptx | html | code | markdown | text`; `location` is `page N`, `pages N-M`,
-`slide N`… or `""` when the source has no page/slide markers. `score` is only comparable within one query.
+`slide N`… or `""` when the source has no page/slide markers. Code is chunked per class/method with
+`location` `lines N-M`, `heading` like `BST > removeRecurse`, and `citation` `hw2/BST.java:340-375 (removeRecurse)`:
+cite code with that citation string. `score` is only comparable within one query.
 
 The CLI finds the notebook by walking up from cwd to a dir containing `sources/`; pass `-C <dir>` otherwise.
 Never read binary sources (PDF/DOCX/PPTX) directly — use `eztudy show <path>`; it is faster and has page markers.
@@ -71,7 +77,8 @@ Pick by situation:
 
 ### 1. Ingest into the wiki
 Follow `references/wiki.md` (page format, naming, citation rules). In short, per new/changed source:
-read it (`eztudy show <path>`) → write `wiki/summaries/<slug>.md` → create/update topic & entity pages with
+read it (`eztudy show <path>`) → write `wiki/summaries/<slug>.md` (one per source, or one per logical unit such as
+an assignment made of several files — list them all in `sources:`) → create/update topic & entity pages with
 `[[links]]` and inline citations → update `wiki/index.md` → `eztudy wiki log "ingest | <title>"`.
 Finish with `eztudy wiki lint` and fix everything it reports. Many sources: ingest in parallel sub-agents,
 one source each, then do a single consolidation pass yourself (merge duplicates, fix index, lint).
@@ -88,6 +95,8 @@ one source each, then do a single consolidation pass yourself (merge duplicates,
 Read `references/study-formats.md` for schemas and quality rules. Then:
 1. Scope: which sources/topics, how many items, difficulty. Default: whole notebook, balanced.
 2. Plan coverage from the wiki index (or `eztudy sources` + summaries). Spread items across topics.
+   If the user has a syllabus or topic list, run `eztudy coverage <list.md>` first and tell them which
+   topics have **no** material (don't invent items for those); re-run it after new sources are ingested.
 3. Ground every item: search, then cite the chunk id + source location.
 4. Write `study/<kind>/<slug>.json`, then `eztudy render` it (validates; writes `.md` + `.html`).
    Non-interactive kinds (guide, briefing, FAQ, glossary, timeline, mind map, audio script) are
@@ -99,6 +108,14 @@ You may move, rename, and group files in `sources/` to improve organization (e.g
 following `references/reorganizing.md`. Moves are detected by content hash: no re-extraction, no
 re-embedding, and wiki citations stay valid after you update their paths (lint reports `unknown_sources`).
 `eztudy index --rebuild` after changing `embedding_model` / chunk settings in `.eztudy/config.toml`.
+
+Fix a bad source title (e.g. a web PDF titled with its URL) in `.eztudy/config.toml`, keyed by path or by the
+8-char hash from `eztudy sources` (the hash survives moves); the next `sync`/`index` applies it, no re-extraction:
+```toml
+[titles]
+"web/week-06.pdf" = "CS 1332 – Week 06"
+"3fa9c2d1" = "Mock exam 1 key"
+```
 
 ## Rules
 - `sources/` content is the user's: never edit file contents, never delete without explicit permission.

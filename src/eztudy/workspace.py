@@ -11,6 +11,11 @@ DEFAULT_CONFIG = {
     "embedding_model": "BAAI/bge-small-en-v1.5",
     "chunk_tokens": 400,
     "chunk_overlap": 60,
+    # `eztudy coverage`: share of a topic's words found in one matching chunk, and the vector
+    # similarity that alone counts as partial coverage (depends on the embedding model).
+    "coverage_covered": 0.6,
+    "coverage_partial": 0.3,
+    "coverage_min_similarity": 0.75,
 }
 
 # Files under sources/ that are never treated as sources.

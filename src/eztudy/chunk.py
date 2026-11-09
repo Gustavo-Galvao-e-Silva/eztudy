@@ -149,3 +149,173 @@ def chunk_markdown(markdown: str, tokens: int = 400, overlap: int = 60) -> list[
         size += len(p.text)
     emit()
     return chunks
+
+
+# --- code: symbol-aware chunks with exact line ranges -----------------------------
+
+CODE_CHUNKER_VERSION = "1"  # bump to re-chunk code sources in existing indexes
+
+_NOT_A_NAME = {
+    "if", "for", "while", "switch", "catch", "return", "new", "else", "do", "try", "synchronized",
+    "sizeof", "elif", "with", "throw", "case", "foreach", "using", "lock", "until", "unless", "assert",
+}
+_HASH_COMMENT_EXTS = {".py", ".rb", ".sh", ".r", ".jl", ".ex", ".exs"}
+_PY_LIKE = {".py", ".rb"}
+_CLASS_RE = re.compile(
+    r"^(\s*)(?:(?:export|default|public|private|protected|internal|static|final|abstract|sealed|open|data|"
+    r"partial|pub(?:\([^)]*\))?|unsafe)\s+)*(class|interface|enum|record|struct|trait|impl|object|protocol|module)\s+(\w+)"
+)
+_PY_RE = re.compile(r"^(\s*)(?:async\s+)?(def|class)\s+(\w+)")
+_FUNC_RES = [
+    re.compile(r"^(\s*)(?:export\s+)?(?:default\s+)?(?:async\s+)?function\*?\s+(\w+)"),             # JS/TS
+    re.compile(r"^(\s*)(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|\w+\s*=>)"),
+    re.compile(r"^(\s*)func\s+(?:\([^)]*\)\s*)?(\w+)"),                                             # Go/Swift
+    re.compile(r"^(\s*)(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+(\w+)"),  # Rust
+    re.compile(r"^(\s*)(?:(?:public|private|protected|internal|override|open|suspend|inline)\s+)*fun\s+(?:<[^>]*>\s*)?(?:\w+\.)?(\w+)"),  # Kotlin
+    re.compile(r"^(\s*)def\s+(?:self\.)?(\w+[?!]?)"),                                                # Ruby
+    # C/C++/Java/C#: `<modifiers/return type> name(` on a line that doesn't end a statement.
+    re.compile(r"^(\s*)(?:[\w$<>\[\],.?*&:~]+(?:\s+|\s*[*&]\s*))+(?:[\w$<>]+::)*([\w$~]+)\s*\([^;=]*$"),
+    re.compile(r"^(\s*)(?:(?:async|static|get|set)\s+)*(\w+)\s*\([^)]*\)\s*\{\s*$"),                # JS class method
+]
+
+
+@dataclass
+class Symbol:
+    name: str
+    kind: str  # "class" | "function"
+    heading: str  # "Outer > name"
+    start: int  # 1-based, including leading comments/annotations
+    line: int  # the signature line
+    end: int
+    indent: int
+
+
+def _leading_start(lines: list[str], i: int, ext: str) -> int:
+    """Index of the first comment/annotation/decorator line directly above line i (0-based)."""
+    prefixes = ("//", "/*", "*", "*/", "@", "///", "#[", "template") + (("#",) if ext in _HASH_COMMENT_EXTS else ())
+    j = i
+    while j > 0 and lines[j - 1].strip().startswith(prefixes):
+        j -= 1
+    return j
+
+
+def _match(line: str, ext: str) -> tuple[int, str, str] | None:
+    if ext in _PY_LIKE:
+        m = _PY_RE.match(line)
+        if m:
+            return len(m.group(1).expandtabs()), "class" if m.group(2) == "class" else "function", m.group(3)
+        if ext == ".py":
+            return None
+    m = _CLASS_RE.match(line)
+    if m and not line.rstrip().endswith(";"):
+        return len(m.group(1).expandtabs()), "class", m.group(3)
+    for rx in _FUNC_RES:
+        m = rx.match(line)
+        if not m:
+            continue
+        name = m.group(2)
+        words = re.findall(r"[\w$]+", line[: m.start(2)])
+        if name in _NOT_A_NAME or any(w in _NOT_A_NAME for w in words) or line.lstrip().startswith(("//", "*", "#", "/*")):
+            return None
+        return len(m.group(1).expandtabs()), "function", name
+    return None
+
+
+def code_symbols(text: str, ext: str) -> list[Symbol]:
+    """Classes and functions/methods (not ones nested inside functions), with 1-based line ranges."""
+    lines = text.splitlines()
+    ext = ext.lower()
+    found: list[Symbol] = []
+    stack: list[Symbol] = []
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        m = _match(line, ext)
+        if not m:
+            continue
+        indent, kind, name = m
+        while stack and stack[-1].indent >= indent:
+            stack.pop()
+        if any(s.kind == "function" for s in stack):
+            continue  # nested helper: part of its parent's chunk
+        heading = " > ".join([s.name for s in stack] + [name])
+        sym = Symbol(name, kind, heading, _leading_start(lines, i, ext) + 1, i + 1, len(lines), indent)
+        found.append(sym)
+        stack.append(sym)
+    for k, sym in enumerate(found):  # a symbol ends before the next one at the same or outer level
+        nxt = next((s for s in found[k + 1:] if s.indent <= sym.indent), None)
+        end = (nxt.start - 1) if nxt else len(lines)
+        while end > sym.line and not lines[end - 1].strip():
+            end -= 1
+        sym.end = end
+    return found
+
+
+def _pack_lines(lines: list[str], start: int, end: int, max_chars: int, overlap_chars: int) -> list[tuple[int, int]]:
+    """Split lines[start..end] (1-based, inclusive) into windows <= max_chars, preferring blank-line breaks."""
+    out, lo = [], start
+    while lo <= end:
+        size, hi, last_blank = 0, lo, None
+        while hi <= end and (size + len(lines[hi - 1]) + 1 <= max_chars or hi == lo):
+            size += len(lines[hi - 1]) + 1
+            if not lines[hi - 1].strip():
+                last_blank = hi
+            hi += 1
+        if hi <= end and last_blank and last_blank > lo + (hi - lo) // 2:
+            hi = last_blank + 1
+        if hi <= end and sum(len(lines[i - 1]) + 1 for i in range(hi, end + 1)) <= max_chars // 8:
+            hi = end + 1  # don't leave a tiny tail (e.g. a lone closing brace) as its own chunk
+        out.append((lo, hi - 1))
+        if hi > end:
+            break
+        back, b = 0, hi
+        while b - 1 > lo + (hi - lo) // 2 and back + len(lines[b - 2]) + 1 <= overlap_chars:
+            back += len(lines[b - 2]) + 1
+            b -= 1
+        lo = b
+    return out
+
+
+def chunk_code(text: str, ext: str, tokens: int = 400, overlap: int = 60) -> list[Chunk]:
+    """One chunk per class preamble / method / function, with exact line ranges; small ones are merged."""
+    lines = text.splitlines()
+    if not any(line.strip() for line in lines):
+        return []
+    max_chars, overlap_chars = tokens * CHARS_PER_TOKEN, overlap * CHARS_PER_TOKEN
+    syms = code_symbols(text, ext)
+    # Segments run from one symbol's start to the next symbol's start (of any level).
+    starts = [(1, "")] + [(s.start, s.heading) for s in syms]
+    segs = []
+    for k, (lo, heading) in enumerate(starts):
+        hi = starts[k + 1][0] - 1 if k + 1 < len(starts) else len(lines)
+        while hi >= lo and not lines[hi - 1].strip():
+            hi -= 1
+        while lo <= hi and not lines[lo - 1].strip():
+            lo += 1
+        if lo <= hi:
+            segs.append([lo, hi, [heading] if heading else []])
+
+    def size(lo, hi):
+        return sum(len(lines[i - 1]) + 1 for i in range(lo, hi + 1))
+
+    merged: list[list] = []
+    for seg in segs:  # merge runs of small segments (getters, constants) up to a quarter chunk
+        if merged and size(merged[-1][0], seg[1]) <= max_chars // 4 + max_chars // 8:
+            merged[-1][1] = seg[1]
+            merged[-1][2] += seg[2]
+        else:
+            merged.append(seg)
+
+    chunks: list[Chunk] = []
+    for lo, hi, headings in merged:
+        names = list(dict.fromkeys(headings))
+        # An enclosing class merged with its members is implied by them: "BST" + "BST > remove" -> "BST > remove".
+        names = [n for n in names if not any(o.startswith(n + " > ") for o in names)] or names
+        groups: dict[str, list[str]] = {}  # parent -> leaf names, in order
+        for n in names:
+            parent, _, leaf = n.rpartition(" > ")
+            groups.setdefault(parent, []).append(leaf)
+        heading = "; ".join((f"{p} > " if p else "") + ", ".join(leaves) for p, leaves in groups.items())
+        for a, b in _pack_lines(lines, lo, hi, max_chars, overlap_chars):
+            chunks.append(Chunk(len(chunks), "\n".join(lines[a - 1:b]), heading, "line", a, b))
+    return chunks

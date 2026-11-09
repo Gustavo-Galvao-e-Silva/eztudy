@@ -12,6 +12,7 @@ from pathlib import Path
 from . import chunk as chunking
 from . import extract as extracting
 from . import manifest as mf
+from . import origins
 from . import render as rendering
 from . import vectordb, wiki
 from .workspace import Workspace, WorkspaceError, find_workspace
@@ -41,6 +42,8 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
         entries.pop(rel, None)
         log["deleted"].append(rel)
 
+    origins.follow_sync(ws, diff.moved, diff.deleted)
+
     todo = set(diff.new) | set(diff.changed)
     for rel in diff.unchanged:
         e = entries[rel]
@@ -54,7 +57,7 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
         try:
             title, text = extracting.extract(ws.sources / rel)
             (ws.text_dir / f"{cur['hash']}.md").write_text(text)
-            entry.update(status="ok", title=title, chars=len(text))
+            entry.update(status="ok", extracted_title=title, chars=len(text))
             log["extracted"].append(rel)
         except extracting.UnsupportedSource as e:
             entry.update(status="unsupported", reason=str(e))
@@ -63,6 +66,8 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
             entry.update(status="error", reason=f"{type(e).__name__}: {e}")
             log["errors"].append({"path": rel, "reason": entry["reason"]})
         entries[rel] = entry
+
+    apply_titles(ws, entries)
 
     # Garbage-collect cached text no longer referenced by any source.
     live = {e["hash"] for e in entries.values()}
@@ -80,6 +85,31 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
     return log
 
 
+def title_override(ws: Workspace, rel: str, digest: str) -> str | None:
+    """A `[titles]` entry from config.toml, keyed by source path or by an 8+ char hash prefix."""
+    titles = ws.config.get("titles") or {}
+    if rel in titles:
+        return str(titles[rel])
+    for key, value in titles.items():
+        if len(key) >= 8 and re.fullmatch(r"[0-9a-f]+", key) and digest.startswith(key):
+            return str(value)
+    return None
+
+
+def apply_titles(ws: Workspace, entries: dict) -> None:
+    """Set each extracted source's title: config override, else what the extractor found."""
+    for rel, e in entries.items():
+        if e.get("status") != "ok":
+            continue
+        e.setdefault("extracted_title", e.get("title"))  # manifests written before overrides existed
+        override = title_override(ws, rel, e["hash"])
+        e["title"] = override or e["extracted_title"]
+        if override:
+            e["title_override"] = True
+        else:
+            e.pop("title_override", None)
+
+
 def _docs(ws: Workspace) -> dict[str, dict]:
     """hash -> {path, title, chars} for every successfully extracted source (first path wins)."""
     out: dict[str, dict] = {}
@@ -90,6 +120,25 @@ def _docs(ws: Workspace) -> dict[str, dict]:
 
 
 # --- commands ------------------------------------------------------------------
+
+
+def cmd_add(ws: Workspace, args) -> int:
+    patterns = ([] if args.no_default_excludes else list(origins.DEFAULT_EXCLUDES)) + [p.strip() for p in (args.exclude or "").split(",") if p.strip()]
+    try:
+        log = origins.add(ws, [Path(p).expanduser() for p in args.paths], args.as_name, patterns, dry_run=args.dry_run)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    verb = "would copy" if args.dry_run else "copied"
+    for rel in log["copied"]:
+        print(f"  {verb}: {rel}")
+    for rel in log["updated"]:
+        print(f"  {'would update' if args.dry_run else 'updated'}: {rel}")
+    for c in log["conflicts"]:
+        print(f"  skipped: {c['path']} ({c['reason']})", file=sys.stderr)
+    print(f"{len(log['copied'])} new, {len(log['updated'])} updated, {len(log['unchanged'])} unchanged, "
+          f"{len(log['conflicts'])} skipped" + ("" if args.dry_run else " -> run `eztudy index`"))
+    return 1 if log["conflicts"] else 0
 
 
 def cmd_status(ws: Workspace, args) -> int:
@@ -109,6 +158,7 @@ def cmd_status(ws: Workspace, args) -> int:
         vec["unindexed"] = sorted(d["path"] for h, d in docs.items() if h not in indexed)
         vec["orphaned"] = sorted(p for h, p in indexed.items() if h not in docs)
     report = wiki.lint(ws, data)
+    origin_changes = origins.changed(ws)
     status = {
         "root": str(ws.root),
         "sources": {"tracked": len(entries), **by_status},
@@ -117,8 +167,9 @@ def cmd_status(ws: Workspace, args) -> int:
         "wiki": {
             "pages": report["pages"],
             "uncovered_sources": report["uncovered_sources"],
-            "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k != "uncovered_sources" and v},
+            "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k not in wiki.INFO_KEYS and v},
         },
+        "origins_changed": origin_changes,
         "study": sorted(p.relative_to(ws.root).as_posix() for p in ws.study.rglob("*") if p.is_file()) if ws.study.exists() else [],
     }
     if args.json:
@@ -144,6 +195,9 @@ def cmd_status(ws: Workspace, args) -> int:
     w = status["wiki"]
     print(f"wiki:     {w['pages']} pages; {len(w['uncovered_sources'])} sources not yet cited by any page"
           + (f"; issues: {w['issues']} -> run `eztudy wiki lint`" if w["issues"] else ""))
+    for o in origin_changes:
+        what = "differs from" if o["state"] == "changed" else "was copied from (now missing)"
+        print(f"origin:   {o['path']} {what} {o['origin']}" + (" -> re-run `eztudy add`" if o["state"] == "changed" else ""))
     if status["study"]:
         print(f"study:    {len(status['study'])} files in study/")
     return 0
@@ -172,9 +226,15 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
         if h in indexed and indexed[h] != d["path"]:
             vectordb.update_path(db, h, d["path"])
             moved += 1
+    for h, title in vectordb.indexed_titles(db).items():
+        if h in docs and docs[h]["title"] != title:
+            vectordb.update_title(db, h, docs[h]["title"])
     db.commit()
 
     todo = [h for h in docs if h not in indexed or args.rebuild]
+    if vectordb.get_meta(db, "code_chunker") != chunking.CODE_CHUNKER_VERSION:
+        # Older indexes chunked code like prose (no line ranges): re-chunk just the code sources.
+        todo += [h for h in docs if h in indexed and h not in todo and extracting.source_type(docs[h]["path"]) == "code"]
     model = ws.config["embedding_model"]
     if todo or vectordb.get_meta(db, "embedding_model") != model:
         if embedder is None:
@@ -187,8 +247,13 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
     total_chunks = 0
     for n, h in enumerate(todo, start=1):
         d = docs[h]
-        text = (ws.text_dir / f"{h}.md").read_text()
-        chunks = chunking.chunk_markdown(text, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
+        if extracting.source_type(d["path"]) == "code":
+            # Chunk the original file (not the normalized extract) so line numbers are exact.
+            src = (ws.sources / d["path"]).read_text(errors="replace")
+            chunks = chunking.chunk_code(src, Path(d["path"]).suffix, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
+        else:
+            text = (ws.text_dir / f"{h}.md").read_text()
+            chunks = chunking.chunk_markdown(text, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
         if not chunks:
             continue
         embed_inputs = [f"{d['title']}\n{c.heading}\n{c.text}" if c.heading else f"{d['title']}\n{c.text}" for c in chunks]
@@ -197,9 +262,66 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
         db.commit()
         total_chunks += len(chunks)
         print(f"  [{n}/{len(todo)}] {d['path']}: {len(chunks)} chunks")
+    vectordb.set_meta(db, "code_chunker", chunking.CODE_CHUNKER_VERSION)
+    db.commit()
     st = vectordb.stats(db)
     print(f"index: +{len(todo)} docs ({total_chunks} chunks), -{len(removed)} removed, {moved} path updates; "
           f"total {st['documents']} docs / {st['chunks']} chunks")
+    return 0
+
+
+def _query_embedder(db, embedder=None):
+    """The embedder matching the index's model (or the one passed in); None, with a message, if there's no index."""
+    model = vectordb.get_meta(db, "embedding_model")
+    if not model:
+        print("vector index is empty; run `eztudy index`", file=sys.stderr)
+        return None
+    if embedder is None:
+        from .embed import Embedder
+
+        embedder = Embedder(model)
+    return embedder
+
+
+def cmd_coverage(ws: Workspace, args, embedder=None) -> int:
+    from . import coverage
+
+    path = Path(args.topics)
+    if not path.is_absolute() and not path.exists():
+        path = ws.root / args.topics
+    if not path.exists():
+        print(f"error: {args.topics} not found", file=sys.stderr)
+        return 2
+    topics = coverage.parse_topics(path.read_text())
+    if not topics:
+        print(f"error: no topics found in {path.name} (use a Markdown list)", file=sys.stderr)
+        return 2
+    if not ws.db_path.exists():
+        print("no vector index yet; run `eztudy index` first", file=sys.stderr)
+        return 2
+    db = vectordb.connect(ws.db_path)
+    embedder = _query_embedder(db, embedder)
+    if embedder is None:
+        return 2
+    rows = []
+    for t in topics:
+        rows.append({**t, **coverage.assess(db, t["topic"], embedder.embed_query(t["topic"]), ws.config, k=args.k)})
+    rows.sort(key=lambda r: coverage.ORDER[r["status"]])  # stable: keeps syllabus order within a status
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(f"# Coverage: {path.name}\n\n" + coverage.to_markdown(rows))
+    if args.json:
+        _print_json(rows)
+        return 0
+    width = min(48, max(len(r["topic"]) for r in rows))
+    for r in rows:
+        best = r["matches"][0] if r["matches"] else None
+        where = f"{best['citation']} [{best['cid']}]" if best else "—"
+        print(f"{r['status']:<8} {r['topic'][:width]:<{width}}  {where}  (terms {r['overlap']:.0%}, sim {r['similarity']:.2f})")
+    counts = {s: sum(r["status"] == s for r in rows) for s in coverage.ORDER}
+    print(f"\n{counts['covered']} covered, {counts['partial']} partial, {counts['missing']} missing"
+          + (f"; wrote {args.out}" if args.out else ""))
     return 0
 
 
@@ -210,14 +332,9 @@ def cmd_search(ws: Workspace, args, embedder=None) -> int:
     db = vectordb.connect(ws.db_path)
     qvec = None
     if args.mode != "fts":
-        model = vectordb.get_meta(db, "embedding_model")
-        if not model:
-            print("vector index is empty; run `eztudy index`", file=sys.stderr)
-            return 2
+        embedder = _query_embedder(db, embedder)
         if embedder is None:
-            from .embed import Embedder
-
-            embedder = Embedder(model)
+            return 2
         qvec = embedder.embed_query(args.query)
     hits = vectordb.search(db, args.query, qvec, k=args.k, mode=args.mode, path_prefix=args.path)
     if args.json:
@@ -247,19 +364,16 @@ def cmd_show(ws: Workspace, args) -> int:
             print(hit.text)
             print()
         return 0
-    rel = target.removeprefix("sources/")
     entries = mf.load(ws)["sources"]
-    e = entries.get(rel)
-    if e is None:
-        matches = [p for p in entries if rel.lower() in p.lower()]
-        if len(matches) == 1:
-            rel, e = matches[0], entries[matches[0]]
-        else:
-            print(f"no tracked source matches {target!r}" + (f"; candidates: {matches}" if matches else " (run `eztudy sync`?)"), file=sys.stderr)
-            return 1
+    rel = _resolve_source(entries, target)
+    if rel is None:
+        return 1
+    e = entries[rel]
     if e.get("status") != "ok":
         print(f"{rel}: not extracted ({e.get('reason', e.get('status'))})", file=sys.stderr)
         return 1
+    if args.lines or args.symbol:
+        return _show_lines(ws, rel, e, args)
     text = (ws.text_dir / f"{e['hash']}.md").read_text()
     if args.pages:
         a, _, b = args.pages.partition("-")
@@ -278,9 +392,49 @@ def cmd_show(ws: Workspace, args) -> int:
     return 0
 
 
+def _show_lines(ws: Workspace, rel: str, e: dict, args) -> int:
+    """Numbered lines of a text/code source, by range (--lines 340-375) or by symbol (--symbol name)."""
+    if extracting.source_type(rel) in ("pdf", "docx", "pptx"):
+        print(f"{rel}: --lines/--symbol work on text and code sources; use --pages", file=sys.stderr)
+        return 1
+    lines = (ws.sources / rel).read_text(errors="replace").splitlines()
+    if args.symbol:
+        syms = [s for s in chunking.code_symbols("\n".join(lines), Path(rel).suffix)
+                if args.symbol in (s.name, s.heading)]
+        if len(syms) != 1:
+            cands = [f"{s.heading} (lines {s.start}-{s.end})" for s in syms]
+            print(f"{rel}: " + (f"{args.symbol!r} is ambiguous: {cands} (use 'Class > name')" if syms else f"no symbol {args.symbol!r}"), file=sys.stderr)
+            return 1
+        lo, hi, label = syms[0].start, syms[0].end, f" ({syms[0].heading})"
+    else:
+        a, _, b = args.lines.partition("-")
+        lo, hi, label = max(1, int(a)), min(len(lines), int(b or a)), ""
+    print(f"# {e.get('title')}  [sources/{rel}:{lo}-{hi}]{label}  hash {e['hash'][:8]}")
+    width = len(str(hi))
+    for n in range(lo, hi + 1):
+        print(f"{n:>{width}}  {lines[n - 1]}")
+    return 0
+
+
+def _resolve_source(entries: dict, target: str) -> str | None:
+    """Exact source path, chunk id / hash prefix, or unique case-insensitive substring; prints why on failure."""
+    rel = target.removeprefix("sources/")
+    if rel in entries:
+        return rel
+    m = re.fullmatch(r"([0-9a-f]{8,64})(?::\d+)?", rel)
+    if m and (hit := wiki.source_for_hash(entries, m.group(1))):
+        return hit
+    matches = [p for p in entries if rel.lower() in p.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    print(f"no tracked source matches {target!r}" + (f"; candidates: {matches}" if matches else " (run `eztudy sync`?)"), file=sys.stderr)
+    return None
+
+
 def cmd_sources(ws: Workspace, args) -> int:
     entries = mf.load(ws)["sources"]
-    rows = [{"path": p, "hash": e["hash"][:8], "status": e.get("status"), "title": e.get("title"), "chars": e.get("chars", 0)} for p, e in entries.items()]
+    rows = [{"path": p, "hash": e["hash"][:8], "status": e.get("status"), "title": e.get("title"),
+             "title_override": bool(e.get("title_override")), "chars": e.get("chars", 0)} for p, e in entries.items()]
     if args.json:
         _print_json(rows)
         return 0
@@ -288,7 +442,8 @@ def cmd_sources(ws: Workspace, args) -> int:
         print("no sources tracked yet; run `eztudy sync`")
     for r in rows:
         flag = "" if r["status"] == "ok" else f"  [{r['status']}]"
-        print(f"{r['hash']}  {r['chars']:>8,} ch  {r['path']}  — {r['title'] or ''}{flag}")
+        mark = " (title from config)" if r["title_override"] else ""
+        print(f"{r['hash']}  {r['chars']:>8,} ch  {r['path']}  — {r['title'] or ''}{mark}{flag}")
     return 0
 
 
@@ -347,8 +502,21 @@ def cmd_wiki(ws: Workspace, args) -> int:
                 fh.write(f"{args.detail}\n")
         print(f"logged: {args.message}")
         return 0
+    if args.wiki_cmd == "cite":
+        entries = mf.load(ws)["sources"]
+        rels = [_resolve_source(entries, t) for t in args.targets]
+        if None in rels:
+            return 1
+        print("sources:")
+        for rel in dict.fromkeys(rels):
+            short = entries[rel]["hash"][:8]
+            print(f"  - path: {rel}\n    hash: {repr(short) if short.isdigit() else short}")  # quote all-digit hashes for YAML
+        return 0
     if args.wiki_cmd == "lint":
+        fixed = wiki.fix(ws, mf.load(ws)) if args.fix else []
         report = wiki.lint(ws, mf.load(ws))
+        if args.fix:
+            report = {"fixed": fixed, **report}
         if args.json:
             _print_json(report)
             return 0 if wiki.lint_ok(report) else 1
@@ -356,7 +524,8 @@ def cmd_wiki(ws: Workspace, args) -> int:
         for key, items in report.items():
             if not isinstance(items, list) or not items:
                 continue
-            print(f"\n{key.replace('_', ' ')} ({len(items)}):")
+            info = " (info)" if key in wiki.INFO_KEYS else ""
+            print(f"\n{key.replace('_', ' ')}{info} ({len(items)}):")
             for it in items:
                 print("  - " + (it if isinstance(it, str) else ", ".join(f"{k}={v}" for k, v in it.items())))
         ok = wiki.lint_ok(report)
@@ -400,6 +569,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("status", help="what changed in sources/, index + wiki health")
     s.add_argument("--json", action="store_true")
 
+    s = sub.add_parser("add", help="copy files/folders from elsewhere into sources/, tracking their origin")
+    s.add_argument("paths", nargs="+")
+    s.add_argument("--as", dest="as_name", help="folder under sources/ to put them in (default: the folder's name)")
+    s.add_argument("--exclude", help="extra comma-separated name patterns to skip, e.g. 'tests,*.csv'")
+    s.add_argument("--dry-run", action="store_true", help="only list what would be copied")
+    s.add_argument("--no-default-excludes", action="store_true",
+                   help="don't skip IDE/build/archive files (.idea, out, build, bin, *.class, *.zip, …)")
+
     s = sub.add_parser("sync", help="extract new/changed sources to text; track moves/deletes")
     s.add_argument("--force", action="store_true", help="re-extract everything")
 
@@ -414,10 +591,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--full", action="store_true", help="don't truncate chunk text")
     s.add_argument("--json", action="store_true")
 
+    s = sub.add_parser("coverage", help="map a syllabus/topic list (Markdown list) to the sources")
+    s.add_argument("topics", help="Markdown file; each list item is a topic, headings group them")
+    s.add_argument("-k", type=int, default=5, help="hits to consider per topic")
+    s.add_argument("--out", help="also write a Markdown coverage table here")
+    s.add_argument("--json", action="store_true")
+
     s = sub.add_parser("show", help="print a chunk (by id) or a source's extracted text (by path)")
     s.add_argument("target", help="chunk id like 3fa9c2d1:12, or a source path / unique substring")
     s.add_argument("--context", type=int, default=0, help="neighbouring chunks to include")
     s.add_argument("--pages", help="for PDFs/PPTX: page or slide range, e.g. 3-5")
+    s.add_argument("--lines", help="for text/code: numbered line range, e.g. 340-375")
+    s.add_argument("--symbol", help="for code: a class/function/method name (or 'Class > method')")
 
     s = sub.add_parser("sources", help="list tracked sources")
     s.add_argument("--json", action="store_true")
@@ -427,6 +612,10 @@ def build_parser() -> argparse.ArgumentParser:
     wsub.add_parser("init", help="create wiki/index.md, wiki/log.md and folders")
     w = wsub.add_parser("lint", help="check links, orphans, index coverage, citations")
     w.add_argument("--json", action="store_true")
+    w.add_argument("--fix", action="store_true",
+                   help="fill missing hashes, follow moved sources, add body-cited sources to frontmatter")
+    w = wsub.add_parser("cite", help="print a ready-to-paste `sources:` frontmatter block")
+    w.add_argument("targets", nargs="+", help="source paths, unique substrings, or chunk ids")
     w = wsub.add_parser("log", help="append an entry to wiki/log.md")
     w.add_argument("message")
     w.add_argument("--detail")
@@ -438,8 +627,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = {
-    "status": cmd_status, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
-    "show": cmd_show, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
+    "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
+    "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
 }
 
 

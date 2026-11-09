@@ -117,6 +117,14 @@ def update_path(db, doc_hash: str, path: str) -> None:
     db.execute("UPDATE documents SET path=? WHERE hash=?", (path, doc_hash))
 
 
+def indexed_titles(db) -> dict[str, str]:
+    return {r["hash"]: r["title"] or "" for r in db.execute("SELECT hash, title FROM documents")}
+
+
+def update_title(db, doc_hash: str, title: str) -> None:
+    db.execute("UPDATE documents SET title=? WHERE hash=?", (title, doc_hash))
+
+
 def add_doc(db, doc_hash: str, path: str, title: str, text_len: int, chunks: list[Chunk], vectors: list[list[float]]) -> None:
     delete_doc(db, doc_hash)
     db.execute(
@@ -145,6 +153,11 @@ class Hit:
 
     @property
     def citation(self) -> str:
+        m = re.fullmatch(r"lines? (\d+)(?:-(\d+))?", self.location)
+        if m:  # code: "BST.java:340-375 (removeRecurse)"
+            span = m.group(1) + (f"-{m.group(2)}" if m.group(2) else "")
+            symbol = self.heading.rpartition(" > ")[2]
+            return f"{self.path}:{span}" + (f" ({symbol})" if symbol else "")
         return f"{self.path}" + (f" ({self.location})" if self.location else "")
 
     def to_dict(self) -> dict:
