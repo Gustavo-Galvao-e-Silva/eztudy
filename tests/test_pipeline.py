@@ -123,11 +123,13 @@ def test_render_quiz_and_flashcards(tmp_path):
         {"type": "mcq", "question": "Powerhouse?", "options": ["Nucleus", "Mitochondria"], "answer": 1, "explanation": "ATP", "citations": [{"source": "bio/cells.pdf", "location": "page 1"}]},
         {"type": "true_false", "question": "DNA is a helix", "answer": True, "citations": ["genetics.pptx slide 1"]},
         {"type": "short", "question": "Who rose in 1799?", "answer": "Napoleon", "citations": ["history.md"]},
+        {"type": "short", "question": "Write remove()", "answer": "T remove() {\n    if (size == 0) throw x;\n}", "citations": ["h.java"]},
     ]}
     p = tmp_path / "quiz.json"
     p.write_text(json.dumps(quiz))
     md, html, _ = render(p)
     assert "## Answer key" in md.read_text() and "1. **B**" in md.read_text()
+    assert "   ```\n   T remove() {\n       if (size == 0) throw x;\n   }\n   ```" in md.read_text()
     page = html.read_text()
     assert "Powerhouse?" in page and "/*__EZTUDY_DATA__*/" not in page
 

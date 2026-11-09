@@ -50,6 +50,11 @@ textarea { width: 100%; min-height: 90px; padding: 10px; border-radius: 10px; bo
 .fb { margin-top: 16px; padding: 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
 .fb.right { border-color: var(--good); } .fb.wrong { border-color: var(--bad); }
 .fb strong.r { color: var(--good); } .fb strong.w { color: var(--bad); }
+.rich { white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.code { margin: 8px 0; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+  overflow-x: auto; white-space: pre; text-align: left; font: .88rem/1.5 ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-variant-ligatures: none; tab-size: 4; }
+.face pre.code { max-width: 100%; }
 .cite { margin-top: 8px; font-size: .82rem; color: var(--muted); }
 .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 button.btn { padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
@@ -106,6 +111,17 @@ const tags = item => {
   return t.length ? h("div", { class: "meta" }, t.map(x => h("span", { class: "tag" }, x))) : null;
 };
 const LETTERS = "ABCDEFGHIJ";
+// Text with preserved line breaks; ``` fenced blocks (and unfenced multi-line code) become <pre>. DOM only, no innerHTML.
+const looksLikeCode = t => /\n/.test(t) && (/[{};]\s*$/m.test(t) || /^(\t| {2,})\S/m.test(t));
+const rich = (text, tag = "span") => {
+  const s = String(text ?? "");
+  if (!s.includes("```")) return looksLikeCode(s) ? h("pre", { class: "code" }, h("code", {}, s.replace(/^\n+|\s+$/g, ""))) : h(tag, { class: "rich" }, s);
+  return h(tag, { class: "rich" }, s.split(/```/).map((part, i) => {
+    if (i % 2 === 0) return part.replace(/^\n|\n$/g, "");
+    const body = part.replace(/^[\w+#.-]*\n/, "").replace(/\n$/, ""); // drop the ```lang line
+    return h("pre", { class: "code" }, h("code", {}, body));
+  }));
+};
 
 $("#title").textContent = DATA.title;
 $("#desc").textContent = DATA.description || "";
@@ -148,7 +164,7 @@ function quiz(items) {
         const self = h("div", { class: "actions" },
           h("button", { class: "btn bad", onclick: () => { self.remove(); record(false); } }, "I missed it"),
           h("button", { class: "btn good", onclick: () => { self.remove(); record(true); } }, "I got it"));
-        card.append(h("div", { class: "fb" }, h("strong", {}, "Model answer: "), String(item.answer), item.explanation ? h("p", {}, item.explanation) : null, cites(item)), self);
+        card.append(h("div", { class: "fb" }, h("strong", {}, "Model answer: "), rich(item.answer, "div"), item.explanation ? rich(item.explanation, "p") : null, cites(item)), self);
       } }, "Reveal answer");
       card.append(ta, h("div", { class: "actions" }, reveal));
     } else {
@@ -172,7 +188,7 @@ function quiz(items) {
   }
   function feedback(ok, item) {
     const ans = normalizeAnswer(item).map(i => item.type === "true_false" ? ["True", "False"][i] : item.options[i]).join(", ");
-    return h("div", { class: "fb " + (ok ? "right" : "wrong") }, h("strong", { class: ok ? "r" : "w" }, ok ? "Correct. " : "Not quite. "), ok ? "" : `Answer: ${ans}. `, item.explanation || "", cites(item));
+    return h("div", { class: "fb " + (ok ? "right" : "wrong") }, h("strong", { class: ok ? "r" : "w" }, ok ? "Correct. " : "Not quite. "), ok ? "" : `Answer: ${ans}. `, item.explanation ? rich(item.explanation) : "", cites(item));
   }
   function summary() {
     document.onkeydown = null;
@@ -184,7 +200,7 @@ function quiz(items) {
     app.append(h("div", { class: "card" },
       h("p", { class: "score" }, `${right} / ${total}`),
       h("p", { class: "count" }, `${Math.round(right / total * 100)}% · best ${Math.round(best * 100)}% over ${hist.attempts.length} attempt(s)`),
-      missed.length ? [h("h3", {}, "Review"), h("ol", { class: "review" }, missed.map(i => h("li", {}, items[i].question, h("div", { class: "cite" }, items[i].explanation || ""))))] : h("p", {}, "Perfect score."),
+      missed.length ? [h("h3", {}, "Review"), h("ol", { class: "review" }, missed.map(i => h("li", {}, items[i].question, items[i].explanation ? h("div", { class: "cite" }, rich(items[i].explanation)) : null)))] : h("p", {}, "Perfect score."),
       h("div", { class: "actions" },
         missed.length ? h("button", { class: "btn", onclick: () => { order = shuffle(missed); pos = 0; results = {}; render(); } }, "Retry missed") : null,
         h("button", { class: "btn primary", onclick: () => { order = shuffle(items.map((_, i) => i)); pos = 0; results = {}; render(); } }, "Restart (shuffled)"))));
@@ -230,7 +246,7 @@ function flashcards(items) {
     const flash = h("div", { class: "flash" + (flipped ? " flipped" : ""), role: "button", tabindex: 0, "aria-label": "Flip card", onclick: () => { flipped = !flipped; flash.classList.toggle("flipped", flipped); } },
       h("div", { class: "inner" },
         h("div", { class: "face front" }, tags(c), h("div", { class: "big" }, c.front)),
-        h("div", { class: "face back" }, h("div", {}, c.back), cites(c))));
+        h("div", { class: "face back" }, rich(c.back, "div"), cites(c))));
     app.append(flash, h("p", { class: "hint" }, `${queue.length} in queue · Space to flip · ← again · → got it`),
       h("div", { class: "actions" }, h("button", { class: "btn bad", onclick: () => mark(false) }, "Again"), h("button", { class: "btn good", onclick: () => mark(true) }, "Got it")));
     document.onkeydown = e => {

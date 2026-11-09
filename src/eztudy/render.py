@@ -126,7 +126,14 @@ def to_markdown(data: dict) -> str:
             ans = q["answer"]
         out.append("")
         expl = f" — {q['explanation']}" if q.get("explanation") else ""
-        key.append(f"{n}. **{ans}**{expl} _({_cite_text(q)})_")
+        if "\n" in str(ans):
+            # Keep multi-line answers (code, steps) intact inside the numbered list.
+            body = str(ans).strip("\n")
+            block = body if body.lstrip().startswith("```") else f"```\n{body}\n```"
+            block = "\n".join("   " + ln if ln else "" for ln in block.splitlines())
+            key.append(f"{n}. _Model answer:_{expl} _({_cite_text(q)})_\n\n{block}\n")
+        else:
+            key.append(f"{n}. **{ans}**{expl} _({_cite_text(q)})_")
     out += ["---", "", "## Answer key", "", *key]
     return "\n".join(out) + "\n"
 
