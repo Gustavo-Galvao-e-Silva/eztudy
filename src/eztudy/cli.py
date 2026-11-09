@@ -13,6 +13,7 @@ from . import chunk as chunking
 from . import extract as extracting
 from . import manifest as mf
 from . import origins
+from . import progress as prog
 from . import render as rendering
 from . import vectordb, wiki
 from .workspace import Workspace, WorkspaceError, find_workspace
@@ -170,6 +171,7 @@ def cmd_status(ws: Workspace, args) -> int:
             "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k not in wiki.INFO_KEYS and v},
         },
         "origins_changed": origin_changes,
+        "progress": _progress_brief(ws),
         "study": sorted(p.relative_to(ws.root).as_posix() for p in ws.study.rglob("*") if p.is_file()) if ws.study.exists() else [],
     }
     if args.json:
@@ -198,9 +200,30 @@ def cmd_status(ws: Workspace, args) -> int:
     for o in origin_changes:
         what = "differs from" if o["state"] == "changed" else "was copied from (now missing)"
         print(f"origin:   {o['path']} {what} {o['origin']}" + (" -> re-run `eztudy add`" if o["state"] == "changed" else ""))
+    pg = status["progress"]
+    if pg["reports"]:
+        print(f"progress: {pg['reports']} sessions, last {pg['last_session'][:10]}"
+              + (f"; weak: {', '.join(pg['weak_topics'][:5])}" if pg["weak_topics"] else "") + " -> `eztudy progress`")
+    if pg["unimported"]:
+        print(f"reports:  {pg['unimported']} saved report(s) not imported -> run `eztudy report import`")
     if status["study"]:
         print(f"study:    {len(status['study'])} files in study/")
     return 0
+
+
+def _progress_brief(ws: Workspace) -> dict:
+    summary = prog.summarize(prog.load_all(ws))
+    stored = {p.stem for p in prog.reports_dir(ws).glob("*.json")} if prog.reports_dir(ws).exists() else set()
+    unimported = 0
+    for p in prog.default_candidates(ws):
+        try:
+            rep = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if not prog.validate(rep) and prog.report_key(rep) not in stored:
+            unimported += 1
+    return {"reports": summary["reports"], "last_session": summary["last_session"],
+            "weak_topics": summary["weak_topics"], "unimported": unimported}
 
 
 def cmd_sync(ws: Workspace, args) -> int:
@@ -562,6 +585,76 @@ def cmd_render(ws: Workspace, args) -> int:
     return rc
 
 
+# --- progress (performance reports) -----------------------------------------------
+
+
+def cmd_report(ws: Workspace, args) -> int:
+    if args.report_cmd != "import":
+        return 2
+    sources: list[tuple[str, str]] = []
+    if args.files:
+        for f in args.files:
+            if f == "-":
+                sources.append(("<stdin>", sys.stdin.read()))
+                continue
+            path = Path(f)
+            if not path.exists() and (ws.root / f).exists():
+                path = ws.root / f
+            try:
+                sources.append((str(path), path.read_text()))
+            except OSError as e:
+                print(f"error: {f}: {e.strerror}", file=sys.stderr)
+                return 1
+    else:
+        cands = prog.default_candidates(ws)
+        if not cands:
+            print(f"no {prog.REPORT_GLOB} files found in study/ or ~/Downloads; pass a path (or - for stdin)")
+            return 0
+        sources = [(str(p), p.read_text()) for p in cands]
+    added, dup, bad = [], 0, 0
+    for origin, text in sources:
+        try:
+            rep = prog.parse(text, origin)
+        except prog.ReportError as e:
+            print(f"error: {e}", file=sys.stderr)
+            bad += 1
+            continue
+        key, new = prog.store(ws, rep)
+        if new:
+            added.append(rep)
+            s = rep.get("score") or {}
+            score = f"{s['right']}/{s['total']}" if "right" in s else ", ".join(f"{v} {k}" for k, v in s.items())
+            print(f"imported {rep['kind']} '{rep['deck'].get('title') or rep['deck']['id']}' ({rep['finished_at'][:16]}){': ' + score if score else ''}")
+        else:
+            dup += 1
+    print(f"done: {len(added)} new, {dup} already imported, {bad} rejected"
+          + (" -> run `eztudy progress` and update wiki/learner.md" if added else ""))
+    return 1 if bad else 0
+
+
+def cmd_progress(ws: Workspace, args) -> int:
+    summary = prog.summarize(prog.load_all(ws), args.deck)
+    if args.json:
+        _print_json(summary)
+        return 0
+    if not summary["reports"]:
+        print("no performance reports yet. Finish a quiz or deck in the player, Save report, then `eztudy report import`.")
+        return 0
+    print(f"{summary['reports']} sessions, last {summary['last_session'][:16]}")
+    print("\nmastery by topic (weakest first):")
+    for t in summary["topics"]:
+        bar = "#" * round(t["mastery"] * 10)
+        print(f"  {t['status']:<8} {bar:<10} {t['mastery']:.0%}  {t['topic']}  ({t['correct']}/{t['seen']}, last {t['last']})")
+    if summary["problem_items"]:
+        print("\nproblem items:")
+        for p in summary["problem_items"][: args.limit]:
+            flag = "still missing" if p["still_missing"] else "recovered"
+            print(f"  [{p['deck']} / {p['id']}] missed {p['misses']}/{p['attempts']}, {flag}: {p['prompt'][:90]}")
+            for w in p["wrong_answers"][:2]:
+                print(f"      picked: {w['answer'][:80]} (x{w['count']})")
+    return 0
+
+
 # --- entry -----------------------------------------------------------------------
 
 
@@ -629,12 +722,22 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--strict", action="store_true", help="exit 1 if any citation chunk id is not in the index")
     s.add_argument("--theme", choices=rendering.SKINS,
                    help="default skin of the HTML player (viewers can switch in the page); default: [ui] theme or focus")
+    s = sub.add_parser("report", help="performance reports saved by the quiz/flashcard player")
+    rsub = s.add_subparsers(dest="report_cmd", required=True)
+    r = rsub.add_parser("import", help="store *.eztudy-report.json files (default: scan study/ and ~/Downloads)")
+    r.add_argument("files", nargs="*", help="report files, or - to read one from stdin")
+
+    s = sub.add_parser("progress", help="mastery by topic and problem items, from imported reports")
+    s.add_argument("--deck", help="only this deck id")
+    s.add_argument("--limit", type=int, default=15, help="problem items to list (text output)")
+    s.add_argument("--json", action="store_true")
     return ap
 
 
 COMMANDS = {
     "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
+    "report": cmd_report, "progress": cmd_progress,
 }
 
 

@@ -73,6 +73,24 @@ also accepted.
 - Player: tap the card to flip it; ‹ / › move between cards; ✗ "Still learning" / ✓ "Know it" mark
   the current card (marks are remembered per browser).
 
+## Performance report (written by the player, read by `eztudy report import`)
+At the end of a quiz (results screen) or a deck (Done screen) the player offers **Save report** and **Copy
+report**. One report covers one session; Retry missed and Start over begin a new one.
+```json
+{"eztudy_report": 1, "kind": "quiz", "deck": {"id": "cell-bio-ch1", "title": "Cell Biology — Chapter 1"},
+ "session": "mw9jik93-8g1q4c", "started_at": "2026-11-09T17:20:01Z", "finished_at": "2026-11-09T17:33:39Z",
+ "score": {"right": 7, "total": 10},
+ "items": [{"id": "q1", "type": "mcq", "topic": "Organelles", "tags": [], "difficulty": "easy",
+            "question": "Which organelle…", "result": "wrong", "graded": "auto",
+            "given": "Nucleus", "correct_answer": "Mitochondrion"}]}
+```
+- Quiz `result`: `correct` | `wrong`; `graded` is `self` for short answers (`given` is the student's draft).
+- Flashcards: `score` is `{know, learn, unmarked}`; items carry `front`, `tags`, `correct_answer` (the back) and
+  `result` `know` | `learn` | `unmarked`. Only cards viewed in that session are included.
+- Mastery groups by item `topic` plus `tags`, so give every quiz item a `topic` and every card `tags`, and
+  reuse the same topic names across decks (use the wiki topic page titles).
+- Keep item `id`s stable when you revise a deck, so history follows the item.
+
 ## Player skins
 The `.html` player has five skins on the same layout: `focus` (default), `editorial`, `terminal`,
 `system7`, `typewriter`. Each has light and dark. Viewers switch skin and light/dark from the ⋯ menu,
