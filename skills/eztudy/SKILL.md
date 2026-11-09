@@ -31,6 +31,7 @@ eztudy show <chunk-id> [--context 1]          # read a chunk (+ neighbours) e.g.
 eztudy show <source-path> [--pages 3-5]       # read a source's extracted text (PDF pages / PPTX slides)
 eztudy show <code-file> --lines 340-375 | --symbol removeRecurse   # numbered source lines (exact line numbers)
 eztudy sources [--json]            # list tracked sources with hash, size, title, status
+eztudy coverage topics.md [--out wiki/coverage.md] [--json]   # syllabus list -> covered / partial / missing per topic
 eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
 eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
 eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and interactive x.html;
@@ -93,6 +94,8 @@ one source each, then do a single consolidation pass yourself (merge duplicates,
 Read `references/study-formats.md` for schemas and quality rules. Then:
 1. Scope: which sources/topics, how many items, difficulty. Default: whole notebook, balanced.
 2. Plan coverage from the wiki index (or `eztudy sources` + summaries). Spread items across topics.
+   If the user has a syllabus or topic list, run `eztudy coverage <list.md>` first and tell them which
+   topics have **no** material (don't invent items for those); re-run it after new sources are ingested.
 3. Ground every item: search, then cite the chunk id + source location.
 4. Write `study/<kind>/<slug>.json`, then `eztudy render` it (validates; writes `.md` + `.html`).
    Non-interactive kinds (guide, briefing, FAQ, glossary, timeline, mind map, audio script) are

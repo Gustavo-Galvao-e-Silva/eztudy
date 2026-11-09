@@ -243,6 +243,61 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
     return 0
 
 
+def _query_embedder(db, embedder=None):
+    """The embedder matching the index's model (or the one passed in); None, with a message, if there's no index."""
+    model = vectordb.get_meta(db, "embedding_model")
+    if not model:
+        print("vector index is empty; run `eztudy index`", file=sys.stderr)
+        return None
+    if embedder is None:
+        from .embed import Embedder
+
+        embedder = Embedder(model)
+    return embedder
+
+
+def cmd_coverage(ws: Workspace, args, embedder=None) -> int:
+    from . import coverage
+
+    path = Path(args.topics)
+    if not path.is_absolute() and not path.exists():
+        path = ws.root / args.topics
+    if not path.exists():
+        print(f"error: {args.topics} not found", file=sys.stderr)
+        return 2
+    topics = coverage.parse_topics(path.read_text())
+    if not topics:
+        print(f"error: no topics found in {path.name} (use a Markdown list)", file=sys.stderr)
+        return 2
+    if not ws.db_path.exists():
+        print("no vector index yet; run `eztudy index` first", file=sys.stderr)
+        return 2
+    db = vectordb.connect(ws.db_path)
+    embedder = _query_embedder(db, embedder)
+    if embedder is None:
+        return 2
+    rows = []
+    for t in topics:
+        rows.append({**t, **coverage.assess(db, t["topic"], embedder.embed_query(t["topic"]), ws.config, k=args.k)})
+    rows.sort(key=lambda r: coverage.ORDER[r["status"]])  # stable: keeps syllabus order within a status
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(f"# Coverage: {path.name}\n\n" + coverage.to_markdown(rows))
+    if args.json:
+        _print_json(rows)
+        return 0
+    width = min(48, max(len(r["topic"]) for r in rows))
+    for r in rows:
+        best = r["matches"][0] if r["matches"] else None
+        where = f"{best['citation']} [{best['cid']}]" if best else "—"
+        print(f"{r['status']:<8} {r['topic'][:width]:<{width}}  {where}  (terms {r['overlap']:.0%}, sim {r['similarity']:.2f})")
+    counts = {s: sum(r["status"] == s for r in rows) for s in coverage.ORDER}
+    print(f"\n{counts['covered']} covered, {counts['partial']} partial, {counts['missing']} missing"
+          + (f"; wrote {args.out}" if args.out else ""))
+    return 0
+
+
 def cmd_search(ws: Workspace, args, embedder=None) -> int:
     if not ws.db_path.exists():
         print("no vector index yet; run `eztudy index` first", file=sys.stderr)
@@ -250,14 +305,9 @@ def cmd_search(ws: Workspace, args, embedder=None) -> int:
     db = vectordb.connect(ws.db_path)
     qvec = None
     if args.mode != "fts":
-        model = vectordb.get_meta(db, "embedding_model")
-        if not model:
-            print("vector index is empty; run `eztudy index`", file=sys.stderr)
-            return 2
+        embedder = _query_embedder(db, embedder)
         if embedder is None:
-            from .embed import Embedder
-
-            embedder = Embedder(model)
+            return 2
         qvec = embedder.embed_query(args.query)
     hits = vectordb.search(db, args.query, qvec, k=args.k, mode=args.mode, path_prefix=args.path)
     if args.json:
@@ -506,6 +556,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--full", action="store_true", help="don't truncate chunk text")
     s.add_argument("--json", action="store_true")
 
+    s = sub.add_parser("coverage", help="map a syllabus/topic list (Markdown list) to the sources")
+    s.add_argument("topics", help="Markdown file; each list item is a topic, headings group them")
+    s.add_argument("-k", type=int, default=5, help="hits to consider per topic")
+    s.add_argument("--out", help="also write a Markdown coverage table here")
+    s.add_argument("--json", action="store_true")
+
     s = sub.add_parser("show", help="print a chunk (by id) or a source's extracted text (by path)")
     s.add_argument("target", help="chunk id like 3fa9c2d1:12, or a source path / unique substring")
     s.add_argument("--context", type=int, default=0, help="neighbouring chunks to include")
@@ -537,7 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {
     "status": cmd_status, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
-    "show": cmd_show, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
+    "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
 }
 
 
