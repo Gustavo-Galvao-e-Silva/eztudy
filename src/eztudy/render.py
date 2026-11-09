@@ -21,6 +21,8 @@ def validate(data: dict) -> list[str]:
         return [f"top-level `type` must be 'quiz' or 'flashcards', got {kind!r}"]
     if not data.get("title"):
         errs.append("missing `title`")
+    if "instant_feedback" in data and not isinstance(data["instant_feedback"], bool):
+        errs.append("`instant_feedback` must be true or false")
     items = data.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["`items` must be a non-empty list"]

@@ -50,6 +50,10 @@ also accepted.
 - MCQ: 4 options, one unambiguously correct; distractors plausible, similar length, drawn from
   related concepts in the sources; avoid "all/none of the above". Vary the correct position.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
+- Multi-line `answer` / `explanation` text keeps its line breaks; wrap code in ```` ``` ```` fences for
+  a monospace block (unfenced multi-line code is detected too).
+- Player: clicking an option (or A–E / 1–9, T/F) only selects it; **Confirm** or Enter grades it.
+  Set top-level `"instant_feedback": true` to grade single-answer items on click instead.
 
 ## Flashcards — `study/flashcards/<slug>.json`
 ```json

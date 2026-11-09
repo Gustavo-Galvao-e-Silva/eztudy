@@ -150,17 +150,18 @@ function quiz(items) {
     const next = h("button", { class: "btn primary", disabled: true, onclick: () => { pos++; render(); } }, pos + 1 === order.length ? "Finish" : "Next");
     const record = ok => { results[order[pos]] = ok; next.disabled = false; next.focus(); };
     function grade() {
+      if (done || !chosen.size) return;
       done = true;
       const picked = [...chosen].sort();
       const ok = picked.length === correct.length && picked.every((v, i) => v === correct[i]);
-      card.querySelectorAll(".opt").forEach((b, i) => { b.disabled = true; if (correct.includes(i)) b.classList.add("right"); else if (chosen.has(i)) b.classList.add("wrong"); });
-      fb.replaceWith(feedback(ok, item)); record(ok); check && check.remove();
+      card.querySelectorAll(".opt").forEach((b, i) => { b.disabled = true; b.classList.remove("sel"); if (correct.includes(i)) b.classList.add("right"); else if (chosen.has(i)) b.classList.add("wrong"); });
+      fb.replaceWith(feedback(ok, item)); confirmRow && confirmRow.remove(); record(ok);
     }
-    let check = null;
+    let confirm = null, confirmRow = null, reveal = null;
     if (item.type === "short") {
-      const ta = h("textarea", { placeholder: "Type your answer, then reveal…" });
-      const reveal = h("button", { class: "btn primary", onclick: () => {
-        reveal.remove(); ta.disabled = true;
+      const ta = h("textarea", { placeholder: "Type your answer, then reveal… (⌘/Ctrl+Enter)" });
+      reveal = h("button", { class: "btn primary", onclick: () => {
+        reveal.remove(); reveal = null; ta.disabled = true;
         const self = h("div", { class: "actions" },
           h("button", { class: "btn bad", onclick: () => { self.remove(); record(false); } }, "I missed it"),
           h("button", { class: "btn good", onclick: () => { self.remove(); record(true); } }, "I got it"));
@@ -168,22 +169,40 @@ function quiz(items) {
       } }, "Reveal answer");
       card.append(ta, h("div", { class: "actions" }, reveal));
     } else {
-      const list = h("div", { class: "opts" }, opts.map((o, i) => h("button", { class: "opt", onclick: e => {
+      // Clicking only selects; Confirm (or Enter) grades. `instant_feedback: true` grades single-answer items on click.
+      const instant = DATA.instant_feedback === true && !multi;
+      const list = h("div", { class: "opts" }, opts.map((o, i) => h("button", { class: "opt", "aria-pressed": "false", onclick: () => {
         if (done) return;
-        if (multi) { chosen.has(i) ? chosen.delete(i) : chosen.add(i); e.currentTarget.classList.toggle("sel"); check.disabled = !chosen.size; }
-        else { chosen = new Set([i]); grade(); }
+        if (multi) chosen.has(i) ? chosen.delete(i) : chosen.add(i);
+        else chosen = new Set([i]);
+        list.querySelectorAll(".opt").forEach((b, j) => { b.classList.toggle("sel", chosen.has(j)); b.setAttribute("aria-pressed", String(chosen.has(j))); });
+        if (instant) return grade();
+        confirm.disabled = !chosen.size;
       } }, h("span", { class: "key" }, LETTERS[i]), h("span", {}, o))));
       card.append(list);
-      if (multi) { check = h("button", { class: "btn primary", disabled: true, onclick: grade }, "Check"); card.append(h("div", { class: "actions" }, check)); }
+      if (!instant) {
+        confirm = h("button", { class: "btn primary", disabled: true, onclick: grade }, "Confirm");
+        confirmRow = h("div", { class: "actions" }, h("span", { class: "hint", style: "margin:0 auto 0 0;align-self:center" },
+          isTF ? "T / F to select · Enter to confirm" : `${LETTERS[0]}–${LETTERS[opts.length - 1]} to select · Enter to confirm`), confirm);
+        card.append(confirmRow);
+      }
     }
     card.append(fb);
     app.append(bar, card, h("div", { class: "actions" }, next));
     document.onkeydown = e => {
-      if (e.target.tagName === "TEXTAREA") return;
-      const i = LETTERS.indexOf(e.key.toUpperCase());
+      if (e.target.tagName === "TEXTAREA") {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && reveal) { e.preventDefault(); reveal.click(); }
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const btns = card.querySelectorAll(".opt");
-      if (i >= 0 && i < btns.length && !done) btns[i].click();
-      else if (e.key === "Enter" && !next.disabled) next.click();
+      const k = e.key.toUpperCase();
+      let i = isTF && (k === "T" || k === "F") ? (k === "T" ? 0 : 1) : /^[1-9]$/.test(e.key) ? Number(e.key) - 1 : LETTERS.indexOf(k);
+      if (e.key.length === 1 && i >= 0 && i < btns.length && !done) { e.preventDefault(); btns[i].click(); }
+      else if (e.key === "Enter") {
+        if (!next.disabled) { e.preventDefault(); next.click(); }
+        else if (confirm && !confirm.disabled) { e.preventDefault(); confirm.click(); }
+      }
     };
   }
   function feedback(ok, item) {
