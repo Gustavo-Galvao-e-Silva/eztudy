@@ -1,0 +1,12 @@
+/* Focus (default): near-empty cream canvas, coral as ornament. Signature: the coral square mark. */
+[data-skin="focus"] {
+  --bg: #F6F2EA; --surface: #FFFCF6; --sunk: #EEE8DC; --fg: #24211C; --muted: #5E574D;
+  --line: #E2DACB; --line-strong: #8F8678; --accent: #D97757; --accent-ink: #A84B2A; --sel: #F6E6DC;
+  --good: #2E6A41; --on-good: #FFFFFF; --bad: #A93A2A; --on-bad: #FFFFFF; --btn: #24211C; --on-btn: #FBF8F2;
+}
+[data-skin="focus"][data-mode="dark"] {
+  --bg: #1D1B19; --surface: #262320; --sunk: #302C28; --fg: #EEE8DD; --muted: #B3AA9D;
+  --line: #37332E; --line-strong: #7C746A; --accent: #D97757; --accent-ink: #EC9A78; --sel: #3A2D26;
+  --good: #86C79A; --on-good: #10200F; --bad: #F2917F; --on-bad: #2A0F0A; --btn: #EEE8DD; --on-btn: #1D1B19;
+}
+[data-skin="focus"] .brand-mark { display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--accent); align-self: center; }

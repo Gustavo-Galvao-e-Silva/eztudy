@@ -1,0 +1,33 @@
+/* System 7: one classic window on a cream desk. Signature: the pinstriped title bar, the hard
+   4px shadow and the thick ring around the default button. Pixel-ish font only in the title bar. */
+[data-skin="system7"] {
+  --bg: #EFE6D6; --surface: #FFFBF3; --sunk: #F2E9D8; --fg: #2B2420; --muted: #6B5F55;
+  --line: #D6C9B3; --line-strong: #2B2420; --accent: #D97757; --accent-ink: #9C482A; --sel: #F8D9C6;
+  --good: #24653F; --on-good: #FFFFFF; --bad: #9C3024; --on-bad: #FFFFFF; --btn: #FFFBF3; --on-btn: #2B2420;
+  --stripe: #9A8877; --hard: #2B2420;
+  --f-ui: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --f-display: "Chicago", "Charcoal", "Geneva", ui-monospace, Menlo, monospace;
+  --r: 4px; --r-card: 0;
+}
+[data-skin="system7"][data-mode="dark"] {
+  --bg: #1F1A17; --surface: #2C2622; --sunk: #241F1C; --fg: #F3EBDD; --muted: #BBAE9F;
+  --line: #3E3530; --line-strong: #A99C8D; --accent: #E58B6B; --accent-ink: #F0A688; --sel: #5A3A2E;
+  --good: #8FD3AC; --on-good: #1F1A17; --bad: #F2A093; --on-bad: #1F1A17; --btn: #2C2622; --on-btn: #F3EBDD;
+  --stripe: #6E6158; --hard: #0E0B09;
+}
+[data-skin="system7"] .win { background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 4px 4px 0 var(--hard); }
+[data-skin="system7"] .win-title {
+  display: flex; justify-content: center; position: relative; height: 26px; border-bottom: 1px solid var(--line-strong); background: var(--sunk);
+}
+[data-skin="system7"] .win-title::before {
+  content: ""; position: absolute; inset: 6px 8px; background: repeating-linear-gradient(to bottom, var(--stripe) 0 1px, transparent 1px 3px);
+}
+[data-skin="system7"] .win-title span {
+  position: relative; padding: 0 10px; background: var(--sunk); font: 12px/26px var(--f-display);
+  max-width: calc(100% - 40px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+[data-skin="system7"] .col { padding: 22px clamp(16px, 4vw, 32px) 26px; }
+[data-skin="system7"] .btn { border-color: var(--line-strong); border-radius: 7px; }
+[data-skin="system7"] .btn:not(.ghost) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px var(--line-strong); margin: 5px; }
+[data-skin="system7"] .btn:not(.ghost):disabled { box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px var(--line); }
+[data-skin="system7"] .fc-face { box-shadow: 3px 3px 0 var(--hard); }

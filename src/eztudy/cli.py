@@ -541,12 +541,16 @@ def cmd_render(ws: Workspace, args) -> int:
         known = {r[0] for r in vectordb.connect(ws.db_path).execute("SELECT cid FROM chunks")}
     else:
         print("note: no index yet, so citation chunk ids were not checked (run `eztudy index`)", file=sys.stderr)
+    skin = args.theme or (ws.config.get("ui") or {}).get("theme")
+    if skin and skin not in rendering.SKINS:
+        print(f"error: unknown theme {skin!r} in .eztudy/config.toml [ui]; choose one of {', '.join(rendering.SKINS)}", file=sys.stderr)
+        return 2
     for p in args.files:
         path = Path(p)
         if not path.is_absolute() and not path.exists():
             path = ws.root / p
         try:
-            md, html, warns = rendering.render(path, known)
+            md, html, warns = rendering.render(path, known, skin)
             print(f"rendered {path.name} -> {md.name}, {html.name}")
             for w in warns:
                 print(f"warning: {path.name}: {w}", file=sys.stderr)
@@ -623,6 +627,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("render", help="validate study JSON and write .md + interactive .html next to it")
     s.add_argument("files", nargs="+")
     s.add_argument("--strict", action="store_true", help="exit 1 if any citation chunk id is not in the index")
+    s.add_argument("--theme", choices=rendering.SKINS,
+                   help="default skin of the HTML player (viewers can switch in the page); default: [ui] theme or focus")
     return ap
 
 

@@ -1,0 +1,122 @@
+/* Editorial: ivory paper, serif for what you read, sans for what you operate.
+   A quiet magazine page: a hairline progress rule, a big italic folio number, a small-caps eyebrow,
+   a coral tick under each question, a fleuron before the answer, an italic explanation on a hanging
+   rule, and footnoted sources.
+   Flashcards are book pages. */
+[data-skin="editorial"] {
+  --bg: #F5F4EE; --surface: #FAF9F5; --sunk: #EFEDE4; --fg: #1F1E1B; --muted: #5E5A51;
+  --line: #DEDACD; --line-strong: #878174; --accent: #D97757; --accent-ink: #A84B2A; --sel: #F6E7DF;
+  --good: #2E6B3E; --on-good: #FFFFFF; --bad: #A3302A; --on-bad: #FFFFFF; --btn: #A84B2A; --on-btn: #FFFFFF;
+  --f-read: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, "Book Antiqua", Georgia, serif;
+  --f-display: var(--f-read);
+  --r: 10px; --r-card: 16px;
+  --page-shade: rgba(60, 50, 30, .10);
+}
+[data-skin="editorial"][data-mode="dark"] {
+  --bg: #262624; --surface: #30302E; --sunk: #3A3A37; --fg: #F0EEE6; --muted: #B9B4A8;
+  --line: #4A4844; --line-strong: #8C877C; --accent: #D97757; --accent-ink: #EB9A7A; --sel: #46372F;
+  --good: #84C495; --on-good: #1A1A18; --bad: #F0948A; --on-bad: #1A1A18; --btn: #E08A68; --on-btn: #1F1E1B;
+  --page-shade: rgba(0, 0, 0, .35);
+}
+
+/* ---------- masthead ---------- */
+[data-skin="editorial"] .bar { border-bottom: 3px double var(--line); }
+[data-skin="editorial"] .brand b { font: 600 1.05rem/1.2 var(--f-read); letter-spacing: 0; }
+[data-skin="editorial"] .brand .desc { font-family: var(--f-read); font-style: italic; font-size: .875rem; }
+[data-skin="editorial"] .brand-mark { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); align-self: center; }
+[data-skin="editorial"] .count { font-family: var(--f-read); font-style: italic; font-size: .9rem; }
+
+/* ---------- progress: a hairline rule of ticks, plus a folio numeral for the current question ---------- */
+[data-skin="editorial"] .col { position: relative; }
+[data-skin="editorial"] .dots { counter-reset: q; flex-wrap: nowrap; justify-content: stretch; gap: 3px; min-height: 12px; overflow: hidden; }
+[data-skin="editorial"] .dot {
+  counter-increment: q; flex: 1 1 0; min-width: 2px; height: 12px; border: 0; border-radius: 0; transform: none;
+  background: linear-gradient(var(--line), var(--line)) center / 100% 3px no-repeat;
+}
+[data-skin="editorial"] .dot.ok, [data-skin="editorial"] .dot.know { background: linear-gradient(var(--good), var(--good)) center / 100% 3px no-repeat; transform: none; }
+[data-skin="editorial"] .dot.bad, [data-skin="editorial"] .dot.learn {   /* dashed, so "missed" isn't told by colour alone */
+  background: repeating-linear-gradient(to right, var(--bad) 0 5px, transparent 5px 8px) center / 100% 3px no-repeat; transform: none;
+}
+[data-skin="editorial"] .dot.cur { width: auto; background: linear-gradient(var(--accent), var(--accent)) center / 100% 5px no-repeat; }
+[data-skin="editorial"] .col:has(.qbox) .dot.cur::after {
+  content: counter(q, decimal-leading-zero); position: absolute; top: 30px; right: 0; pointer-events: none;
+  font: italic 300 3.4rem/1 var(--f-read); letter-spacing: -.03em; color: var(--accent-ink);
+}
+
+/* ---------- question ---------- */
+[data-skin="editorial"] .qbox { gap: 20px; }
+[data-skin="editorial"] .meta {
+  min-height: 3.4rem; align-items: flex-end; padding-right: 5rem; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  font-variant: all-small-caps; font-size: .9rem; letter-spacing: .1em; color: var(--muted);
+}
+[data-skin="editorial"] .meta span + span::before { content: "·"; margin-right: 12px; color: var(--line-strong); }
+[data-skin="editorial"] .q { font-weight: 400; font-size: 1.6rem; line-height: 1.35; letter-spacing: -.005em; }
+[data-skin="editorial"] .q::after { content: ""; display: block; width: 3rem; height: 3px; margin-top: 16px; border-radius: 2px; background: var(--accent); }
+[data-skin="editorial"] .hint { margin-top: -6px; font-family: var(--f-read); font-style: italic; font-size: .95rem; }
+[data-skin="editorial"] .opt { border-radius: 12px; padding-block: 13px; }
+[data-skin="editorial"] .opt .txt { font-family: var(--f-read); font-size: 1.06rem; }
+[data-skin="editorial"] .flag { font-variant: all-small-caps; font-size: .85rem; letter-spacing: .06em; }
+
+/* ---------- answer: a fleuron, a drop cap, footnoted sources ---------- */
+[data-skin="editorial"] .fb { border-top: 0; padding-top: 0; gap: 14px; }
+[data-skin="editorial"] .fb::before {
+  content: "❦"; display: block; text-align: center; font: 1.15rem/1.6 var(--f-read); color: var(--accent-ink);
+  background: linear-gradient(to right, var(--line) 0 calc(50% - 1.4rem), transparent calc(50% - 1.4rem) calc(50% + 1.4rem), var(--line) calc(50% + 1.4rem)) center / 100% 1px no-repeat;
+}
+[data-skin="editorial"] .badge { font-variant: all-small-caps; letter-spacing: .06em; font-size: .95rem; }
+[data-skin="editorial"] .verdict .ans { font-family: var(--f-read); font-style: italic; }
+[data-skin="editorial"] .expl { font-size: 1.08rem; line-height: 1.65; }
+[data-skin="editorial"] p.expl { font-style: italic; padding-left: 16px; border-left: 2px solid var(--accent); }
+[data-skin="editorial"] .fb .label { font-family: var(--f-read); font-weight: 400; font-variant: all-small-caps; text-transform: none; font-size: 1rem; letter-spacing: .1em; }
+[data-skin="editorial"] .cites { padding-top: 10px; border-top: 1px solid var(--line); gap: 6px 8px; }
+[data-skin="editorial"] .cites::before {
+  content: "Sources"; flex-basis: 100%; font: 400 .95rem/1.2 var(--f-read); font-variant: all-small-caps; letter-spacing: .1em; color: var(--muted);
+}
+[data-skin="editorial"] .cite { border-radius: 99px; border-color: var(--line-strong); font-family: var(--f-ui); }
+[data-skin="editorial"] .cite .n { display: inline; font: italic .95rem/1 var(--f-read); color: var(--accent-ink); }
+[data-skin="editorial"] .cite .src { font-family: var(--f-mono); }
+
+/* ---------- results ---------- */
+[data-skin="editorial"] .score { position: relative; align-items: flex-end; gap: 6px 18px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+[data-skin="editorial"] .score::after { content: ""; position: absolute; left: 0; bottom: -2px; width: 3rem; height: 3px; border-radius: 2px; background: var(--accent); }
+[data-skin="editorial"] .score .big { font-weight: 300; font-size: clamp(5rem, 22vw, 8.5rem); line-height: .8; letter-spacing: -.05em; }
+[data-skin="editorial"] .score .of { font-family: var(--f-read); font-style: italic; font-size: 1.25rem; line-height: 1.4; padding-bottom: .3rem; max-width: 22rem; }
+[data-skin="editorial"] .sect > h2 { font: 400 1.15rem/1.3 var(--f-read); font-variant: all-small-caps; text-transform: none; letter-spacing: .1em; color: var(--fg); }
+[data-skin="editorial"] .sect > h2::before { content: "§ "; color: var(--accent-ink); }
+[data-skin="editorial"] .topics .tn { font-family: var(--f-read); font-size: 1rem; }
+[data-skin="editorial"] .track { height: 3px; border-radius: 0; box-shadow: none; background: var(--line); }
+[data-skin="editorial"] .misses { counter-reset: miss; }
+[data-skin="editorial"] .misses li { counter-increment: miss; grid-template-columns: 2rem minmax(0, 1fr); column-gap: 6px; }
+[data-skin="editorial"] .misses li > * { grid-column: 2; }
+[data-skin="editorial"] .misses li::before {
+  content: counter(miss) "."; grid-column: 1; grid-row: 1; font: italic 1.25rem/1.3 var(--f-read); color: var(--accent-ink);
+}
+[data-skin="editorial"] .misses .mq { font: 400 1.12rem/1.45 var(--f-read); }
+[data-skin="editorial"] .misses dt { font-variant: all-small-caps; letter-spacing: .08em; }
+
+/* ---------- flashcards: book pages ---------- */
+[data-skin="editorial"] .fc-top .dots { flex: 1; max-width: 55%; }
+[data-skin="editorial"] .tally { font-family: var(--f-read); font-style: italic; font-weight: 400; font-size: 1.05rem; }
+[data-skin="editorial"] .fc-face {
+  position: relative; border-color: var(--line); border-radius: 4px 14px 14px 4px; padding: 28px 30px 26px 34px;
+  background: linear-gradient(to right, var(--page-shade), transparent 22px) var(--surface);
+  box-shadow: 1px 1px 0 var(--surface), 2px 2px 0 var(--line), 4px 4px 0 var(--surface), 5px 5px 0 var(--line), 0 14px 30px -18px var(--page-shade);
+}
+[data-skin="editorial"] .fc-face::after {   /* a dog-eared corner */
+  content: ""; position: absolute; top: -1px; right: -1px; width: 26px; height: 26px; border-top-right-radius: 14px;
+  background: linear-gradient(225deg, var(--bg) 0 50%, var(--sunk) 50% 100%); box-shadow: -1px 1px 2px var(--page-shade);
+}
+[data-skin="editorial"] .fc-face .side { font-variant: all-small-caps; text-transform: none; font-family: var(--f-read); font-size: .95rem; letter-spacing: .1em; padding-right: 22px; }
+[data-skin="editorial"] .fc-face.front .body { font-weight: 400; font-style: italic; font-size: 1.55rem; line-height: 1.3; }
+[data-skin="editorial"] .fc-face.front .body::after { content: ""; width: 3rem; height: 3px; margin: 14px auto 0; border-radius: 2px; background: var(--accent); }
+[data-skin="editorial"] .fc-face.back .body { font-size: 1.12rem; line-height: 1.6; }
+[data-skin="editorial"] .fc-face .tip { font-family: var(--f-read); font-style: italic; font-size: .9rem; }
+[data-skin="editorial"] .tag { font-family: var(--f-read); font-variant: all-small-caps; letter-spacing: .06em; font-size: .85rem; }
+[data-skin="editorial"] .mk span:last-child { font-family: var(--f-read); font-style: italic; font-size: .95rem; }
+
+@media (max-width: 520px) {
+  [data-skin="editorial"] .q { font-size: 1.3rem; }
+  [data-skin="editorial"] .col:has(.qbox) .dot.cur::after { font-size: 2.6rem; top: 34px; }
+  [data-skin="editorial"] .meta { min-height: 2.9rem; padding-right: 3.8rem; }
+  [data-skin="editorial"] .fc-face { padding: 22px 36px 22px 36px; }
+}
