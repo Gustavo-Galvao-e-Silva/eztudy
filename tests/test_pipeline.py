@@ -24,6 +24,26 @@ def test_extract_formats(notebook):
     assert title == "French Revolution"
 
 
+def test_pdf_url_title_falls_back_to_heading(tmp_path):
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((50, 80), "Week 06 Notes", fontsize=24)
+    page.insert_text((50, 120), "Heaps are complete binary trees.", fontsize=11)
+    page.insert_text((50, 140), "The min-heap property holds at every node.", fontsize=11)
+    doc.set_metadata({"title": "https:/example.com/course-notes/week-06"})
+    doc.save(tmp_path / "web.pdf")
+    assert extract.extract(tmp_path / "web.pdf")[0] == "Week 06 Notes"
+
+    # No prominent heading -> file stem, never the URL.
+    doc = pymupdf.open()
+    doc.new_page().insert_text((50, 80), "just body text", fontsize=11)
+    doc.set_metadata({"title": "https://example.com/x"})
+    doc.save(tmp_path / "plain-notes.pdf")
+    assert extract.extract(tmp_path / "plain-notes.pdf")[0] == "plain-notes"
+
+
 def test_sync_tracks_moves_and_deletes(notebook):
     ws = find_workspace(notebook)
     log = sync_sources(ws, quiet=True)

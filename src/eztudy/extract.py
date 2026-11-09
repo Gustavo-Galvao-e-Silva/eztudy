@@ -80,11 +80,43 @@ def _pdf(path: Path) -> tuple[str, str]:
 
     parts = []
     with pymupdf.open(path) as doc:
-        title = (doc.metadata or {}).get("title") or ""
+        title = ((doc.metadata or {}).get("title") or "").strip()
+        if _junk_title(title) and len(doc):
+            title = _largest_line(doc[0])
         for i, page in enumerate(doc, start=1):
             text = page.get_text("text", sort=True)
             parts.append(f"<!-- page {i} -->\n{text.strip()}\n")
     return title, "\n".join(parts)
+
+
+_JUNK_TITLE_RE = re.compile(
+    r"^(?:[a-z][a-z0-9+.-]*:/|www\.)"            # URL, incl. browsers' collapsed "https:/host/..."
+    r"|^Microsoft (?:Word|PowerPoint) - "         # Office print-to-PDF
+    r"|\.(?:pdf|docx?|pptx?|html?|txt|md)$"         # a filename
+    r"|^untitled",
+    re.IGNORECASE,
+)
+
+
+def _junk_title(title: str) -> bool:
+    return not title or bool(_JUNK_TITLE_RE.search(title))
+
+
+def _largest_line(page) -> str:
+    """The most prominent text line on a page (biggest font, clearly above body size), or ''."""
+    lines = []  # (size, text)
+    for block in page.get_text("dict").get("blocks", []):
+        for line in block.get("lines", []):
+            spans = [sp for sp in line.get("spans", []) if sp.get("text", "").strip()]
+            if spans:
+                text = " ".join("".join(sp["text"] for sp in spans).split())
+                lines.append((max(sp["size"] for sp in spans), text))
+    if len(lines) < 2:
+        return ""
+    sizes = sorted(sz for sz, _ in lines)
+    median = sizes[len(sizes) // 2]
+    size, text = max(lines, key=lambda x: x[0])
+    return text if size >= 1.2 * median and 2 < len(text) <= 150 else ""
 
 
 def _docx(path: Path) -> tuple[str, str]:
