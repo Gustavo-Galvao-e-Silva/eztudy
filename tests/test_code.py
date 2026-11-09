@@ -76,6 +76,9 @@ def test_python_symbols_skip_nested_and_merge_small():
     assert syms == ["MinHeap", "MinHeap > push", "MinHeap > build", "heap_sort"]  # nested helper skipped
     chunks = chunk.chunk_code(PY, ".py")  # default size: everything small merges
     assert len(chunks) == 1 and chunks[0].loc_start == 1 and chunks[0].loc_end == 18
+    assert chunks[0].heading == "MinHeap > push, build; heap_sort"
+    merged = chunk.chunk_code(JAVA, ".java")
+    assert merged[0].heading == "BST > remove" and merged[0].loc_start == 1
 
 
 def test_index_search_and_show_code(notebook, fake_embedder, capsys):

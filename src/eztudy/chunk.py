@@ -309,11 +309,13 @@ def chunk_code(text: str, ext: str, tokens: int = 400, overlap: int = 60) -> lis
     chunks: list[Chunk] = []
     for lo, hi, headings in merged:
         names = list(dict.fromkeys(headings))
-        if len(names) > 1:
-            parent = names[0].rpartition(" > ")[0]
-            heading = (parent + " > " if parent else "") + ", ".join(n.rpartition(" > ")[2] for n in names)
-        else:
-            heading = names[0] if names else ""
+        # An enclosing class merged with its members is implied by them: "BST" + "BST > remove" -> "BST > remove".
+        names = [n for n in names if not any(o.startswith(n + " > ") for o in names)] or names
+        groups: dict[str, list[str]] = {}  # parent -> leaf names, in order
+        for n in names:
+            parent, _, leaf = n.rpartition(" > ")
+            groups.setdefault(parent, []).append(leaf)
+        heading = "; ".join((f"{p} > " if p else "") + ", ".join(leaves) for p, leaves in groups.items())
         for a, b in _pack_lines(lines, lo, hi, max_chars, overlap_chars):
             chunks.append(Chunk(len(chunks), "\n".join(lines[a - 1:b]), heading, "line", a, b))
     return chunks
