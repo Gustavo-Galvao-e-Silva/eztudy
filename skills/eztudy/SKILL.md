@@ -29,6 +29,7 @@ eztudy index [--rebuild]           # sync + chunk + embed into SQLite (fastembed
 eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--path bio/] [--full] [--json]
 eztudy show <chunk-id> [--context 1]          # read a chunk (+ neighbours) e.g. 3fa9c2d1:12
 eztudy show <source-path> [--pages 3-5]       # read a source's extracted text (PDF pages / PPTX slides)
+eztudy show <code-file> --lines 340-375 | --symbol removeRecurse   # numbered source lines (exact line numbers)
 eztudy sources [--json]            # list tracked sources with hash, size, title, status
 eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
 eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
@@ -43,7 +44,9 @@ eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and
   "text": "…chunk text…", "citation": "bio/cells.pdf (pages 4-5)"}]
 ```
 `type` is one of `pdf | docx | pptx | html | code | markdown | text`; `location` is `page N`, `pages N-M`,
-`slide N`… or `""` when the source has no page/slide markers. `score` is only comparable within one query.
+`slide N`… or `""` when the source has no page/slide markers. Code is chunked per class/method with
+`location` `lines N-M`, `heading` like `BST > removeRecurse`, and `citation` `hw2/BST.java:340-375 (removeRecurse)`:
+cite code with that citation string. `score` is only comparable within one query.
 
 The CLI finds the notebook by walking up from cwd to a dir containing `sources/`; pass `-C <dir>` otherwise.
 Never read binary sources (PDF/DOCX/PPTX) directly — use `eztudy show <path>`; it is faster and has page markers.

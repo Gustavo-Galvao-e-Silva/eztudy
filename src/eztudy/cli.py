@@ -205,6 +205,9 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
     db.commit()
 
     todo = [h for h in docs if h not in indexed or args.rebuild]
+    if vectordb.get_meta(db, "code_chunker") != chunking.CODE_CHUNKER_VERSION:
+        # Older indexes chunked code like prose (no line ranges): re-chunk just the code sources.
+        todo += [h for h in docs if h in indexed and h not in todo and extracting.source_type(docs[h]["path"]) == "code"]
     model = ws.config["embedding_model"]
     if todo or vectordb.get_meta(db, "embedding_model") != model:
         if embedder is None:
@@ -217,8 +220,13 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
     total_chunks = 0
     for n, h in enumerate(todo, start=1):
         d = docs[h]
-        text = (ws.text_dir / f"{h}.md").read_text()
-        chunks = chunking.chunk_markdown(text, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
+        if extracting.source_type(d["path"]) == "code":
+            # Chunk the original file (not the normalized extract) so line numbers are exact.
+            src = (ws.sources / d["path"]).read_text(errors="replace")
+            chunks = chunking.chunk_code(src, Path(d["path"]).suffix, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
+        else:
+            text = (ws.text_dir / f"{h}.md").read_text()
+            chunks = chunking.chunk_markdown(text, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
         if not chunks:
             continue
         embed_inputs = [f"{d['title']}\n{c.heading}\n{c.text}" if c.heading else f"{d['title']}\n{c.text}" for c in chunks]
@@ -227,6 +235,8 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
         db.commit()
         total_chunks += len(chunks)
         print(f"  [{n}/{len(todo)}] {d['path']}: {len(chunks)} chunks")
+    vectordb.set_meta(db, "code_chunker", chunking.CODE_CHUNKER_VERSION)
+    db.commit()
     st = vectordb.stats(db)
     print(f"index: +{len(todo)} docs ({total_chunks} chunks), -{len(removed)} removed, {moved} path updates; "
           f"total {st['documents']} docs / {st['chunks']} chunks")
@@ -285,6 +295,8 @@ def cmd_show(ws: Workspace, args) -> int:
     if e.get("status") != "ok":
         print(f"{rel}: not extracted ({e.get('reason', e.get('status'))})", file=sys.stderr)
         return 1
+    if args.lines or args.symbol:
+        return _show_lines(ws, rel, e, args)
     text = (ws.text_dir / f"{e['hash']}.md").read_text()
     if args.pages:
         a, _, b = args.pages.partition("-")
@@ -300,6 +312,30 @@ def cmd_show(ws: Workspace, args) -> int:
         text = "".join(keep) or f"(no page/slide markers in range {args.pages})"
     print(f"# {e.get('title')}  [sources/{rel}]  hash {e['hash'][:8]}")
     print(text)
+    return 0
+
+
+def _show_lines(ws: Workspace, rel: str, e: dict, args) -> int:
+    """Numbered lines of a text/code source, by range (--lines 340-375) or by symbol (--symbol name)."""
+    if extracting.source_type(rel) in ("pdf", "docx", "pptx"):
+        print(f"{rel}: --lines/--symbol work on text and code sources; use --pages", file=sys.stderr)
+        return 1
+    lines = (ws.sources / rel).read_text(errors="replace").splitlines()
+    if args.symbol:
+        syms = [s for s in chunking.code_symbols("\n".join(lines), Path(rel).suffix)
+                if args.symbol in (s.name, s.heading)]
+        if len(syms) != 1:
+            cands = [f"{s.heading} (lines {s.start}-{s.end})" for s in syms]
+            print(f"{rel}: " + (f"{args.symbol!r} is ambiguous: {cands} (use 'Class > name')" if syms else f"no symbol {args.symbol!r}"), file=sys.stderr)
+            return 1
+        lo, hi, label = syms[0].start, syms[0].end, f" ({syms[0].heading})"
+    else:
+        a, _, b = args.lines.partition("-")
+        lo, hi, label = max(1, int(a)), min(len(lines), int(b or a)), ""
+    print(f"# {e.get('title')}  [sources/{rel}:{lo}-{hi}]{label}  hash {e['hash'][:8]}")
+    width = len(str(hi))
+    for n in range(lo, hi + 1):
+        print(f"{n:>{width}}  {lines[n - 1]}")
     return 0
 
 
@@ -474,6 +510,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("target", help="chunk id like 3fa9c2d1:12, or a source path / unique substring")
     s.add_argument("--context", type=int, default=0, help="neighbouring chunks to include")
     s.add_argument("--pages", help="for PDFs/PPTX: page or slide range, e.g. 3-5")
+    s.add_argument("--lines", help="for text/code: numbered line range, e.g. 340-375")
+    s.add_argument("--symbol", help="for code: a class/function/method name (or 'Class > method')")
 
     s = sub.add_parser("sources", help="list tracked sources")
     s.add_argument("--json", action="store_true")
