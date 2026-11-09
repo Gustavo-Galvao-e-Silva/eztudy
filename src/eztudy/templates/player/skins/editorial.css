@@ -1,0 +1,22 @@
+/* Editorial: ivory paper, serif for what you read, sans for what you operate.
+   Signature: the large serif score numeral and numbered footnote citations. */
+[data-skin="editorial"] {
+  --bg: #F5F4EE; --surface: #FAF9F5; --sunk: #EFEDE4; --fg: #1F1E1B; --muted: #5E5A51;
+  --line: #DEDACD; --line-strong: #878174; --accent: #D97757; --accent-ink: #A84B2A; --sel: #F6E7DF;
+  --good: #2E6B3E; --on-good: #FFFFFF; --bad: #A3302A; --on-bad: #FFFFFF; --btn: #A84B2A; --on-btn: #FFFFFF;
+  --f-read: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, "Book Antiqua", Georgia, serif;
+  --f-display: var(--f-read);
+  --r: 10px; --r-card: 16px;
+}
+[data-skin="editorial"][data-mode="dark"] {
+  --bg: #262624; --surface: #30302E; --sunk: #3A3A37; --fg: #F0EEE6; --muted: #B9B4A8;
+  --line: #4A4844; --line-strong: #8C877C; --accent: #D97757; --accent-ink: #EB9A7A; --sel: #46372F;
+  --good: #84C495; --on-good: #1A1A18; --bad: #F0948A; --on-bad: #1A1A18; --btn: #E08A68; --on-btn: #1F1E1B;
+}
+[data-skin="editorial"] .q { font-weight: 400; font-size: 1.5rem; line-height: 1.38; }
+[data-skin="editorial"] .expl { font-size: 1.06rem; line-height: 1.6; }
+[data-skin="editorial"] .score .big { font-weight: 300; font-size: clamp(4.5rem, 18vw, 7rem); line-height: .85; letter-spacing: -.04em; }
+[data-skin="editorial"] .score .of { font-family: var(--f-read); font-style: italic; font-size: 1.4rem; }
+[data-skin="editorial"] .cite { border-radius: 99px; border-color: var(--line-strong); font-family: var(--f-ui); }
+[data-skin="editorial"] .cite .n { display: inline; font: italic .9rem/1 var(--f-read); color: var(--accent-ink); }
+[data-skin="editorial"] .cite .src { font-family: var(--f-mono); }

@@ -1,0 +1,47 @@
+/* Typewriter: questions typed on ruled index cards. Signature: the CORRECT / MISSED rubber stamp.
+   Cards stay dimmed cream at night; only the desk around them goes dark. */
+[data-skin="typewriter"] {
+  --bg: #EFE7D8; --surface: #FBF7EE; --sunk: #F2EADB; --fg: #2A2520; --muted: #6B6158;
+  --line: #D9CDB8; --line-strong: #6B6158; --accent: #D97757; --accent-ink: #9C4930; --sel: #F5E3D8;
+  --good: #2F6B45; --on-good: #FFFFFF; --bad: #A84B2C; --on-bad: #FFFFFF; --btn: #2A2520; --on-btn: #FBF7EE;
+  --rule-blue: #BCD3E3; --rule-red: #D9A1A1;
+  --f-type: "American Typewriter", "Courier New", Courier, ui-monospace, monospace;
+  --f-ui: var(--f-type); --f-read: var(--f-type);
+  --f-display: var(--f-type);
+  --r: 3px; --r-card: 3px;
+}
+[data-skin="typewriter"][data-mode="dark"] {
+  --bg: #1E1A17; --surface: #2B2521; --sunk: #332C27; --fg: #E8DFCF; --muted: #A89C8C;
+  --line: #3E3630; --line-strong: #A89C8C; --accent: #D97757; --accent-ink: #E08A6A; --sel: #3E2E26;
+  --good: #7DB892; --on-good: #1E1A17; --bad: #E8957A; --on-bad: #1E1A17; --btn: #E8DFCF; --on-btn: #1E1A17;
+}
+/* The card keeps paper colours in both themes. */
+[data-skin="typewriter"][data-mode="dark"] .qbox,
+[data-skin="typewriter"][data-mode="dark"] .fc-face {
+  --surface: #EDE4D2; --sunk: #E1D6C0; --fg: #2A2520; --muted: #5F564E; --line: #CFC2AA; --line-strong: #5F564E;
+  --accent-ink: #93412A; --sel: #E9D3C4; --good: #2A6140; --on-good: #FFFFFF; --bad: #93412A; --on-bad: #FFFFFF;
+  --btn: #2A2520; --on-btn: #EDE4D2; --rule-blue: #A9C1D2; --rule-red: #CC8E8E;
+}
+[data-skin="typewriter"] .qbox, [data-skin="typewriter"] .fc-face {
+  color: var(--fg); padding: 18px 22px 22px; border-radius: var(--r-card); border: 0;
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--rule-red), var(--rule-red)), repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule-blue) 27px 28px);
+  background-size: 100% 2px, 100% calc(100% - 54px); background-repeat: no-repeat; background-position: 0 52px, 0 54px;
+  box-shadow: 0 1px 1px rgba(60, 40, 20, .18), 0 10px 24px -8px rgba(60, 40, 20, .25);
+}
+[data-skin="typewriter"] .qbox .meta { min-height: 30px; text-transform: uppercase; letter-spacing: .1em; }
+[data-skin="typewriter"] .opt { background: transparent; border-color: transparent; }
+[data-skin="typewriter"] .opt:hover:not(:disabled) { background: var(--sel); }
+[data-skin="typewriter"] .opt.is-wrong .txt { text-decoration: line-through 2px var(--bad); }
+[data-skin="typewriter"] .expl { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 1.04rem; }
+[data-skin="typewriter"] .fb { position: relative; }
+[data-skin="typewriter"] .fb .verdict { min-height: 2.2rem; padding-right: 8.5rem; }
+[data-skin="typewriter"] .stamp {
+  display: block; position: absolute; top: 12px; right: 4px; padding: 6px 12px 4px;
+  font: 400 1.3rem/1 var(--f-type); letter-spacing: .12em; text-transform: uppercase;
+  border: 3px double currentColor; border-radius: 6px; transform: rotate(-8deg); animation: stamp .42s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+[data-skin="typewriter"] .stamp.ok { color: var(--good); }
+[data-skin="typewriter"] .stamp.bad { color: var(--bad); }
+[data-skin="typewriter"] .verdict .badge { display: none; }
+@keyframes stamp { from { transform: rotate(-8deg) scale(1.6); opacity: 0; } to { transform: rotate(-8deg) scale(1); opacity: 1; } }

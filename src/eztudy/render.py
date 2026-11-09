@@ -140,20 +140,36 @@ def to_markdown(data: dict) -> str:
     return "\n".join(out) + "\n"
 
 
-def to_html(data: dict) -> str:
-    template = resources.files("eztudy").joinpath("templates/player.html").read_text()
+SKINS = ("focus", "editorial", "terminal", "system7", "typewriter")
+DEFAULT_SKIN = "focus"
+
+
+def _player(name: str) -> str:
+    return resources.files("eztudy").joinpath("templates/player", name).read_text()
+
+
+def to_html(data: dict, skin: str | None = None) -> str:
+    """One self-contained offline page: base layout + every skin (switchable in the page) + the app."""
+    skin = skin or DEFAULT_SKIN
+    if skin not in SKINS:
+        raise StudyFormatError(f"unknown theme {skin!r}; choose one of {', '.join(SKINS)}")
+    css = "\n".join([_player("base.css")] + [_player(f"skins/{s}.css") for s in SKINS])
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/").replace("<!--", "<\\!--")
     return (
-        template.replace("__EZTUDY_TITLE__", html.escape(data["title"]))
+        _player("shell.html")
+        .replace("__EZTUDY_SKIN__", skin)
+        .replace("__EZTUDY_TITLE__", html.escape(data["title"]))
+        .replace("/*__EZTUDY_CSS__*/", css)
+        .replace("/*__EZTUDY_JS__*/", _player("app.js"))
         .replace("/*__EZTUDY_DATA__*/null", payload)
     )
 
 
-def render(path: Path, known_cids: set[str] | None = None) -> tuple[Path, Path, list[str]]:
+def render(path: Path, known_cids: set[str] | None = None, skin: str | None = None) -> tuple[Path, Path, list[str]]:
     """Validate and write .md + .html. Returns (md, html, warnings); warnings need `known_cids`."""
     data = load(path)
     warns = unknown_citations(data, known_cids) if known_cids is not None else []
     md_path, html_path = path.with_suffix(".md"), path.with_suffix(".html")
     md_path.write_text(to_markdown(data))
-    html_path.write_text(to_html(data))
+    html_path.write_text(to_html(data, skin))
     return md_path, html_path, warns

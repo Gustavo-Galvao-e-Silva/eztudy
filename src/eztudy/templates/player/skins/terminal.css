@@ -1,0 +1,25 @@
+/* Terminal: monospace on cream paper. Signature: an ASCII progress bar and prompt-style verdicts. */
+[data-skin="terminal"] {
+  --bg: #F5EFE3; --surface: #FBF7EE; --sunk: #EFE7D8; --fg: #2B2520; --muted: #6B5F54;
+  --line: #E2D8C6; --line-strong: #6B5F54; --accent: #D97757; --accent-ink: #A84B2A; --sel: #F6E4D9;
+  --good: #3F6B3A; --on-good: #FFFFFF; --bad: #A33A2E; --on-bad: #FFFFFF; --btn: #A84B2A; --on-btn: #FBF7EE;
+  --f-ui: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+  --f-read: var(--f-ui); --f-display: var(--f-ui);
+  --r: 3px; --r-card: 4px;
+}
+[data-skin="terminal"][data-mode="dark"] {
+  --bg: #1E1A16; --surface: #27221D; --sunk: #2E2822; --fg: #EDE4D3; --muted: #A89A87;
+  --line: #3A332C; --line-strong: #8A7D6C; --accent: #E8916F; --accent-ink: #F0A584; --sel: #3A2A22;
+  --good: #9CC48C; --on-good: #1E1A16; --bad: #EE8A78; --on-bad: #1E1A16; --btn: #F0A584; --on-btn: #1E1A16;
+}
+[data-skin="terminal"] body { font-size: .9375rem; }
+[data-skin="terminal"] .q { font-size: 1.05rem; font-weight: 500; line-height: 1.55; }
+[data-skin="terminal"] .dots { display: none; }
+[data-skin="terminal"] .ascii { display: block; margin: 0; text-align: center; white-space: pre; font-size: .8125rem; color: var(--muted); }
+[data-skin="terminal"] .ascii b { color: var(--accent-ink); font-weight: 400; }
+[data-skin="terminal"] .verdict { display: none; }
+[data-skin="terminal"] .verdict-term { display: block; margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+[data-skin="terminal"] .verdict-term.ok { color: var(--good); }
+[data-skin="terminal"] .verdict-term.bad { color: var(--bad); }
+[data-skin="terminal"] .expl { color: var(--muted); }
+[data-skin="terminal"] .expl::before { content: "# "; }
