@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import warnings
 from functools import lru_cache
 from typing import Iterable
 
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# huggingface_hub warns on every run when fastembed tries to re-enable the progress bars we disabled.
+warnings.filterwarnings("ignore", message=r"Cannot enable progress bars", category=UserWarning)
 
 # bge-style models expect a query instruction prefix for retrieval queries.
 QUERY_PREFIXES = {
