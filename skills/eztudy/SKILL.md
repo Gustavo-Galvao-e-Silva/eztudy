@@ -100,6 +100,14 @@ following `references/reorganizing.md`. Moves are detected by content hash: no r
 re-embedding, and wiki citations stay valid after you update their paths (lint reports `unknown_sources`).
 `eztudy index --rebuild` after changing `embedding_model` / chunk settings in `.eztudy/config.toml`.
 
+Fix a bad source title (e.g. a web PDF titled with its URL) in `.eztudy/config.toml`, keyed by path or by the
+8-char hash from `eztudy sources` (the hash survives moves); the next `sync`/`index` applies it, no re-extraction:
+```toml
+[titles]
+"web/week-06.pdf" = "CS 1332 – Week 06"
+"3fa9c2d1" = "Mock exam 1 key"
+```
+
 ## Rules
 - `sources/` content is the user's: never edit file contents, never delete without explicit permission.
   Moving/renaming/grouping is allowed; mention what you moved.

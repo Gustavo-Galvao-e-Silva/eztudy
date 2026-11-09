@@ -159,3 +159,30 @@ def test_render_warns_on_unknown_cids(notebook, fake_embedder, capsys):
     err = capsys.readouterr().err
     assert "item 2 (typo): unknown chunk id 'deadbeef:99'" in err and cid not in err
     assert main(["-C", str(notebook), "render", str(p), "--strict"]) == 1
+
+
+def test_title_overrides(notebook, fake_embedder, capsys):
+    ws = find_workspace(notebook)
+    cmd_index(ws, args("index"), embedder=fake_embedder)
+    h = mf.load(ws)["sources"]["genetics.pptx"]["hash"][:8]
+    ws.config_path.write_text(f'[titles]\n"history.md" = "Revolution notes"\n"{h}" = "Mendel deck"\n')
+    ws = find_workspace(notebook)
+    cmd_index(ws, args("index"), embedder=fake_embedder)
+    capsys.readouterr()
+    main(["-C", str(notebook), "sources", "--json"])
+    rows = {r["path"]: r for r in json.loads(capsys.readouterr().out)}
+    assert rows["history.md"]["title"] == "Revolution notes" and rows["history.md"]["title_override"]
+    assert rows["genetics.pptx"]["title"] == "Mendel deck"
+    assert rows["bio/cells.pdf"]["title"] == "Cell Biology Notes" and not rows["bio/cells.pdf"]["title_override"]
+    db = vectordb.connect(ws.db_path)
+    assert vectordb.search(db, "Bastille", None, mode="fts")[0].title == "Revolution notes"
+
+    # The hash key follows the file across a move; removing overrides restores extracted titles.
+    (notebook / "sources" / "genetics.pptx").rename(notebook / "sources" / "mendel.pptx")
+    sync_sources(ws, quiet=True)
+    assert mf.load(ws)["sources"]["mendel.pptx"]["title"] == "Mendel deck"
+    ws.config_path.unlink()
+    ws = find_workspace(notebook)
+    cmd_index(ws, args("index"), embedder=fake_embedder)
+    assert mf.load(ws)["sources"]["history.md"]["title"] == "French Revolution"
+    assert vectordb.search(db, "Bastille", None, mode="fts")[0].title == "French Revolution"

@@ -54,7 +54,7 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
         try:
             title, text = extracting.extract(ws.sources / rel)
             (ws.text_dir / f"{cur['hash']}.md").write_text(text)
-            entry.update(status="ok", title=title, chars=len(text))
+            entry.update(status="ok", extracted_title=title, chars=len(text))
             log["extracted"].append(rel)
         except extracting.UnsupportedSource as e:
             entry.update(status="unsupported", reason=str(e))
@@ -63,6 +63,8 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
             entry.update(status="error", reason=f"{type(e).__name__}: {e}")
             log["errors"].append({"path": rel, "reason": entry["reason"]})
         entries[rel] = entry
+
+    apply_titles(ws, entries)
 
     # Garbage-collect cached text no longer referenced by any source.
     live = {e["hash"] for e in entries.values()}
@@ -78,6 +80,31 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
         for item in log["unsupported"] + log["errors"]:
             print(f"  skipped: {item['path']} ({item['reason']})")
     return log
+
+
+def title_override(ws: Workspace, rel: str, digest: str) -> str | None:
+    """A `[titles]` entry from config.toml, keyed by source path or by an 8+ char hash prefix."""
+    titles = ws.config.get("titles") or {}
+    if rel in titles:
+        return str(titles[rel])
+    for key, value in titles.items():
+        if len(key) >= 8 and re.fullmatch(r"[0-9a-f]+", key) and digest.startswith(key):
+            return str(value)
+    return None
+
+
+def apply_titles(ws: Workspace, entries: dict) -> None:
+    """Set each extracted source's title: config override, else what the extractor found."""
+    for rel, e in entries.items():
+        if e.get("status") != "ok":
+            continue
+        e.setdefault("extracted_title", e.get("title"))  # manifests written before overrides existed
+        override = title_override(ws, rel, e["hash"])
+        e["title"] = override or e["extracted_title"]
+        if override:
+            e["title_override"] = True
+        else:
+            e.pop("title_override", None)
 
 
 def _docs(ws: Workspace) -> dict[str, dict]:
@@ -172,6 +199,9 @@ def cmd_index(ws: Workspace, args, embedder=None) -> int:
         if h in indexed and indexed[h] != d["path"]:
             vectordb.update_path(db, h, d["path"])
             moved += 1
+    for h, title in vectordb.indexed_titles(db).items():
+        if h in docs and docs[h]["title"] != title:
+            vectordb.update_title(db, h, docs[h]["title"])
     db.commit()
 
     todo = [h for h in docs if h not in indexed or args.rebuild]
@@ -280,7 +310,8 @@ def cmd_show(ws: Workspace, args) -> int:
 
 def cmd_sources(ws: Workspace, args) -> int:
     entries = mf.load(ws)["sources"]
-    rows = [{"path": p, "hash": e["hash"][:8], "status": e.get("status"), "title": e.get("title"), "chars": e.get("chars", 0)} for p, e in entries.items()]
+    rows = [{"path": p, "hash": e["hash"][:8], "status": e.get("status"), "title": e.get("title"),
+             "title_override": bool(e.get("title_override")), "chars": e.get("chars", 0)} for p, e in entries.items()]
     if args.json:
         _print_json(rows)
         return 0
@@ -288,7 +319,8 @@ def cmd_sources(ws: Workspace, args) -> int:
         print("no sources tracked yet; run `eztudy sync`")
     for r in rows:
         flag = "" if r["status"] == "ok" else f"  [{r['status']}]"
-        print(f"{r['hash']}  {r['chars']:>8,} ch  {r['path']}  — {r['title'] or ''}{flag}")
+        mark = " (title from config)" if r["title_override"] else ""
+        print(f"{r['hash']}  {r['chars']:>8,} ch  {r['path']}  — {r['title'] or ''}{mark}{flag}")
     return 0
 
 
