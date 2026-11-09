@@ -10,7 +10,7 @@ own; this file is the schema. The wiki is plain Markdown with `[[wikilinks]]`, s
 wiki/
   index.md          catalog of every page, one line each — read this first, update on every change
   log.md            append-only history (use `eztudy wiki log`)
-  summaries/        one page per source:      summaries/<source-slug>.md
+  summaries/        one page per source or logical unit: summaries/<slug>.md
   topics/           concepts, themes, methods: topics/<topic-slug>.md
   entities/         people, places, orgs, works, named things: entities/<name-slug>.md
   (optional) overview.md, questions/, comparisons/ — add folders when they earn their keep
@@ -56,7 +56,10 @@ Rules:
 - **Synthesize, don't copy**: topic pages merge what *all* sources say; note disagreements explicitly
   under a `## Conflicts` heading with both citations.
 - **Summaries** (`summaries/`): 150–400 words, the source's thesis, structure, key claims, and links
-  to the topic/entity pages it feeds. `sources:` lists just that one source.
+  to the topic/entity pages it feeds. Write one summary per **logical unit**: usually one source, but an
+  assignment, chapter or lecture split across several files (e.g. `hw2/BST.java`, `hw2/BSTNode.java`,
+  `hw2/spec.pdf`) gets one summary `summaries/hw2-bst.md` whose `sources:` lists every file in it.
+  Lint counts each listed file as covered.
 - Keep pages focused (~100–800 words). Split when a page sprawls; merge near-duplicates.
 
 ## index.md
@@ -69,7 +72,7 @@ of the whole notebook.
 
 **Ingest** (per new or changed source, from `eztudy status`):
 1. `eztudy show <path>` (use `--pages` for long PDFs; for very long sources read in sections).
-2. Write/overwrite `summaries/<slug>.md`.
+2. Write/overwrite `summaries/<slug>.md` (one per source, or one per logical unit of several files).
 3. For each significant concept/entity: update its page if it exists (merge, don't append blindly;
    bump `updated`, add the source to `sources:`), otherwise create it.
 4. Update `index.md` and the Overview if the big picture changed.

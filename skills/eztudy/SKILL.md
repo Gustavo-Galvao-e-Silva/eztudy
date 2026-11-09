@@ -71,7 +71,8 @@ Pick by situation:
 
 ### 1. Ingest into the wiki
 Follow `references/wiki.md` (page format, naming, citation rules). In short, per new/changed source:
-read it (`eztudy show <path>`) → write `wiki/summaries/<slug>.md` → create/update topic & entity pages with
+read it (`eztudy show <path>`) → write `wiki/summaries/<slug>.md` (one per source, or one per logical unit such as
+an assignment made of several files — list them all in `sources:`) → create/update topic & entity pages with
 `[[links]]` and inline citations → update `wiki/index.md` → `eztudy wiki log "ingest | <title>"`.
 Finish with `eztudy wiki lint` and fix everything it reports. Many sources: ingest in parallel sub-agents,
 one source each, then do a single consolidation pass yourself (merge duplicates, fix index, lint).
