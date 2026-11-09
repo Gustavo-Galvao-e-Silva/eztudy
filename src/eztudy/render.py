@@ -4,10 +4,27 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from importlib import resources
 from pathlib import Path
 
-QUIZ_TYPES = {"mcq", "multi", "true_false", "short"}
+QUIZ_TYPES = {"mcq", "multi", "true_false", "short", "code"}
+
+# `language` of a code item -> editor language pack ("id" or "id:dialect"). Mirrors ALIASES in
+# editor/src/editor.js; anything else is edited as plain text (still with completions from context).
+LANG_ALIASES = {
+    "java": "java", "python": "python", "py": "python", "python3": "python",
+    "c": "cpp", "c++": "cpp", "cpp": "cpp", "cc": "cpp", "cxx": "cpp", "h": "cpp", "hpp": "cpp",
+    "javascript": "javascript", "js": "javascript", "jsx": "javascript:jsx", "mjs": "javascript", "node": "javascript",
+    "typescript": "javascript:ts", "ts": "javascript:ts", "tsx": "javascript:tsx",
+    "sql": "sql", "postgres": "sql:postgresql", "postgresql": "sql:postgresql", "mysql": "sql:mysql", "sqlite": "sql:sqlite",
+    "go": "go", "golang": "go", "rust": "rust", "rs": "rust",
+}
+
+
+def editor_lang(language) -> str:
+    """Language pack id for a code item's `language` ("plain" when unknown or missing)."""
+    return LANG_ALIASES.get(str(language or "").strip().lower(), "plain").split(":")[0]
 
 
 class StudyFormatError(ValueError):
@@ -59,6 +76,39 @@ def validate(data: dict) -> list[str]:
             errs.append(f"{where}: true_false `answer` must be true or false")
         elif t == "short" and not (isinstance(ans, str) and ans.strip()):
             errs.append(f"{where}: short `answer` must be a non-empty model answer string")
+        elif t == "code":
+            errs += [f"{where}: {e}" for e in _code_errors(it)]
+    return errs
+
+
+def _code_errors(it: dict) -> list[str]:
+    errs = []
+    if not (isinstance(it.get("answer"), str) and it["answer"].strip()):
+        errs.append("code `answer` must be a non-empty model solution string")
+    for k in ("language", "starter"):
+        if k in it and not isinstance(it[k], str):
+            errs.append(f"`{k}` must be a string")
+    ctx = it.get("context")
+    if ctx is not None:
+        ids = ctx.get("identifiers") if isinstance(ctx, dict) else None
+        if not isinstance(ctx, dict) or not isinstance(ids, list) or not all(
+                isinstance(i, str) or (isinstance(i, dict) and isinstance(i.get("name"), str)) for i in ids):
+            errs.append("`context` must be {\"identifiers\": [name or {\"name\", \"kind\"?, \"detail\"?}, ...]}")
+    rubric = it.get("rubric")
+    if rubric is not None:
+        if not isinstance(rubric, list):
+            return errs + ["`rubric` must be a list of criteria"]
+        for k, c in enumerate(rubric, start=1):
+            if not isinstance(c, dict) or not isinstance(c.get("text"), str) or not c["text"].strip():
+                errs.append(f"rubric {k}: needs a `text`")
+                continue
+            if "points" in c and (isinstance(c["points"], bool) or not isinstance(c["points"], (int, float))):
+                errs.append(f"rubric {k}: `points` must be a number")
+            if "match" in c:
+                try:
+                    re.compile(c["match"])
+                except (re.error, TypeError) as e:
+                    errs.append(f"rubric {k}: `match` is not a valid regex: {e}")
     return errs
 
 
@@ -123,6 +173,16 @@ def to_markdown(data: dict) -> str:
         elif t == "true_false":
             out.append("- True / False")
             ans = "True" if q["answer"] else "False"
+        elif t == "code":
+            lang = q.get("language", "")
+            starter = (q.get("starter") or "").replace("$0", "")
+            out += [f"_Write code ({lang or 'any language'})._", ""]
+            if starter.strip():
+                out += [f"```{lang}", starter.strip("\n"), "```"]
+            ans = f"```{lang}\n{q['answer'].strip(chr(10))}\n```"
+            if q.get("rubric"):
+                ans += "\n\nRubric:\n" + "\n".join(
+                    f"- {c['text']}" + (f" ({c['points']} pt)" if "points" in c else "") for c in q["rubric"])
         else:
             out.append("_Short answer._")
             ans = q["answer"]
@@ -148,8 +208,27 @@ def _player(name: str) -> str:
     return resources.files("eztudy").joinpath("templates/player", name).read_text()
 
 
+def code_langs(data: dict) -> list[str]:
+    """Editor language packs a quiz needs (empty when it has no code items: no editor bytes)."""
+    if data.get("type") != "quiz":
+        return []
+    langs = {editor_lang(it.get("language")) for it in data["items"] if isinstance(it, dict) and it.get("type") == "code"}
+    return sorted(langs)
+
+
+def _vendor(langs: list[str]) -> str:
+    if not langs:
+        return ""
+    files = ["cm-core.js"] + [f"cm-lang-{lang}.js" for lang in langs if lang != "plain"]
+    js = "\n".join(_player(f"vendor/{f}") for f in files)
+    if re.search(r"</script|<!--", js, re.I):
+        raise StudyFormatError("vendored editor contains a sequence that would end the <script> tag; rebuild it")
+    return f"<script>\n{js}\n</script>"
+
+
 def to_html(data: dict, skin: str | None = None) -> str:
-    """One self-contained offline page: base layout + every skin (switchable in the page) + the app."""
+    """One self-contained offline page: base layout + every skin (switchable in the page) + the app.
+    Quizzes with `code` items also inline the CodeMirror editor and only the language packs they use."""
     skin = skin or DEFAULT_SKIN
     if skin not in SKINS:
         raise StudyFormatError(f"unknown theme {skin!r}; choose one of {', '.join(SKINS)}")
@@ -160,6 +239,7 @@ def to_html(data: dict, skin: str | None = None) -> str:
         .replace("__EZTUDY_SKIN__", skin)
         .replace("__EZTUDY_TITLE__", html.escape(data["title"]))
         .replace("/*__EZTUDY_CSS__*/", css)
+        .replace("<!--__EZTUDY_VENDOR__-->", _vendor(code_langs(data)))
         .replace("/*__EZTUDY_JS__*/", _player("app.js"))
         .replace("/*__EZTUDY_DATA__*/null", payload)
     )

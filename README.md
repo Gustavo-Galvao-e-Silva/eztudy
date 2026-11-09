@@ -12,6 +12,8 @@ ask your agent to study them. The agent does the rest:
   hybrid semantic + keyword search with page-level citations. No API keys, no servers.
 - **Study material** — quizzes, flashcards (both with a self-contained interactive HTML player),
   study guides, briefing docs, FAQs, glossaries, timelines, mind maps, audio-overview scripts.
+- **Code questions** — quiz items of type `code` open a real editor in the player (CodeMirror: syntax
+  colours per skin, local completions, live lint, rubric hints, optional Vim keys), still fully offline.
 - **Adaptive practice** — finish a quiz or deck, hit *Save report*, and the agent imports it, tracks
   mastery per topic, notes your misconceptions in `wiki/learner.md`, and aims the next quiz at your weak spots.
 - **Bookkeeping** — sources are tracked by content hash, so agents can rename and reorganize
@@ -93,12 +95,25 @@ Layout:
 skills/eztudy/SKILL.md            agent instructions
 skills/eztudy/references/         wiki schema, study formats, reorganizing rules
 bin/eztudy                        CLI wrapper (on PATH when the plugin is enabled)
-src/eztudy/                       Python CLI
+src/eztudy/                       Python CLI (player templates + vendored editor in templates/player/)
+editor/                           CodeMirror editor sources + build (dev only, needs Node)
 tests/
 ```
 
 Validate with `claude plugin validate .`; release with `claude plugin tag` after bumping
 `version` in `.claude-plugin/plugin.json`.
+
+### The code editor
+
+The player's editor is a vendored CodeMirror build in `src/eztudy/templates/player/vendor/` (committed, so
+users never need Node). After changing anything in `editor/`:
+
+```bash
+cd editor && npm ci && npm run build   # rebuilds vendor/*.js and vendor/sizes.json
+npm test                               # lint + completion tests (also run by pytest when node is present)
+uv run python editor/test/shots.py --skin terminal   # screenshots of the editor in a skin, light + dark
+```
+`pytest` fails if `vendor/sizes.json` was built from different sources than `editor/` holds.
 
 ## License
 

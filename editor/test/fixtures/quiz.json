@@ -1,0 +1,37 @@
+{
+  "type": "quiz",
+  "id": "editor-fixture",
+  "title": "Heaps — code practice",
+  "description": "Editor fixture: Java + Python code items",
+  "items": [
+    {
+      "id": "remove",
+      "type": "code",
+      "language": "java",
+      "topic": "Heaps",
+      "difficulty": "medium",
+      "question": "Implement remove() for an array-backed MinHeap (root at index 1).",
+      "starter": "public T remove() {\n    $0\n}",
+      "context": {"identifiers": ["backingArray", {"name": "size", "kind": "field", "detail": "int"}, {"name": "downHeap", "kind": "method", "detail": "(int i)"}]},
+      "answer": "public T remove() {\n    if (size == 0) {\n        throw new NoSuchElementException(\"Heap is empty\");\n    }\n    T min = backingArray[1];\n    backingArray[1] = backingArray[size];\n    backingArray[size--] = null;\n    downHeap(1); // restore order\n    return min;\n}",
+      "rubric": [
+        {"id": "empty", "text": "Throws NoSuchElementException when empty", "points": 2, "match": "NoSuchElementException"},
+        {"id": "swap", "text": "Moves the last element to the root", "points": 1, "match": "backingArray\\[1\\]\\s*=\\s*backingArray\\[size"},
+        {"id": "down", "text": "Restores heap order with downHeap", "points": 2, "match": "downHeap\\("}
+      ],
+      "explanation": "Remove the root, move the last element up, then sift it down.",
+      "citations": [{"cid": "a8cbb175:0", "source": "ds/heaps.pdf", "location": "page 3"}]
+    },
+    {
+      "id": "bfs",
+      "type": "code",
+      "language": "python",
+      "topic": "Graphs",
+      "question": "Return the BFS order from start.",
+      "starter": "def bfs(adj, start):\n    $0",
+      "answer": "def bfs(adj, start):\n    seen, queue, order = {start}, [start], []\n    while queue:\n        node = queue.pop(0)\n        order.append(node)\n        for nxt in adj[node]:\n            if nxt not in seen:\n                seen.add(nxt)\n                queue.append(nxt)\n    return order",
+      "citations": ["ds/graphs.pdf p.2"]
+    },
+    {"id": "q3", "type": "mcq", "topic": "Heaps", "question": "Where is the minimum of a min-heap?", "options": ["Root", "Last leaf"], "answer": 0, "citations": ["x"]}
+  ]
+}

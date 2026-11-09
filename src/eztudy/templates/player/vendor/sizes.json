@@ -1,0 +1,37 @@
+{
+  "source_hash": "5bcb89d7f7bc2c5e",
+  "files": {
+    "cm-core.js": {
+      "raw": 597689,
+      "gzip": 194382
+    },
+    "cm-lang-cpp.js": {
+      "raw": 105052,
+      "gzip": 34778
+    },
+    "cm-lang-go.js": {
+      "raw": 32295,
+      "gzip": 13093
+    },
+    "cm-lang-java.js": {
+      "raw": 48769,
+      "gzip": 19722
+    },
+    "cm-lang-javascript.js": {
+      "raw": 86602,
+      "gzip": 34020
+    },
+    "cm-lang-python.js": {
+      "raw": 46521,
+      "gzip": 19608
+    },
+    "cm-lang-rust.js": {
+      "raw": 84819,
+      "gzip": 30737
+    },
+    "cm-lang-sql.js": {
+      "raw": 33235,
+      "gzip": 13417
+    }
+  }
+}

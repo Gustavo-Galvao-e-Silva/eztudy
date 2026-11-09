@@ -46,7 +46,8 @@ also accepted.
   ]
 }
 ```
-- `answer`: 0-based option index (`mcq`), list of indices (`multi`), boolean (`true_false`), model answer string (`short`).
+- `answer`: 0-based option index (`mcq`), list of indices (`multi`), boolean (`true_false`), model answer string (`short`),
+  model solution (`code`, see below).
 - MCQ: 4 options, one unambiguously correct; distractors plausible, similar length, drawn from
   related concepts in the sources; avoid "all/none of the above". Vary the correct position.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
@@ -54,6 +55,39 @@ also accepted.
   a monospace block (unfenced multi-line code is detected too).
 - Player (click-only, no keyboard shortcuts): clicking an option only selects it; **Confirm** grades it.
   Set top-level `"instant_feedback": true` to grade single-answer items on click instead.
+
+### Code items (`"type": "code"`)
+For questions where the student writes code. The player gives them a real editor (CodeMirror, offline):
+syntax colours that follow the skin, line numbers, bracket matching, auto-indent, Tab to indent (Esc then Tab
+leaves the editor), local completions, conservative live lint, and an optional **Vim keys** toggle in the ⋯ menu.
+```json
+{
+  "id": "heap-remove", "type": "code", "language": "java", "topic": "Heaps", "difficulty": "medium",
+  "question": "Implement remove() for an array-backed MinHeap (root at index 1).",
+  "starter": "public T remove() {\n    $0\n}",
+  "context": {"identifiers": ["backingArray", {"name": "size", "kind": "field", "detail": "int"},
+                              {"name": "downHeap", "kind": "method", "detail": "(int i)"}]},
+  "answer": "public T remove() {\n    if (size == 0) throw new NoSuchElementException();\n    …\n}",
+  "rubric": [{"id": "empty", "text": "Throws NoSuchElementException when empty", "points": 2, "match": "NoSuchElementException"},
+             {"id": "down", "text": "Restores heap order with downHeap", "points": 2, "match": "downHeap\\("}],
+  "explanation": "…", "citations": [{"cid": "…", "source": "ds/heaps.pdf", "location": "page 3"}]
+}
+```
+- `language`: `java`, `python`, `c`/`cpp`, `javascript`/`typescript` (`js`, `ts`, `jsx`, `tsx`), `sql` (`postgresql`,
+  `mysql`, `sqlite`), `go`, `rust`. Anything else is edited as plain text. Only the languages a quiz uses are
+  bundled into its page; quizzes without code items carry no editor at all.
+- `starter` (optional): pre-filled code; `$0` marks where the cursor starts.
+- `context.identifiers` (optional): names from the surrounding code (class fields, helper methods, types) offered
+  as completions with their kind (`field`, `method`, `function`, `type`, `variable`, `constant`). Completions are
+  local only (keywords, these identifiers, words in the file, snippets); the popup says so.
+- `answer`: the model solution, shown highlighted after the student submits.
+- `rubric` (optional): what a full answer does. After submitting, the student ticks each criterion to grade
+  themselves. `match` (optional, a regex) is a **hint**: the first line matching it gets a ✓ in the gutter and
+  the criterion shows "hint: line N" or "hint: not found". Hints never grade; write them to match the key
+  construct (a call, an exception, a comparison), not whole lines, and leave `match` out when no regex would
+  be reliable.
+- Use `code` when writing code is the skill being tested; use `short` for explanations that may quote code.
+- Grading is self-graded ("I got it" / "I missed it"); performance reports include the code and ticked criteria.
 
 ## Flashcards — `study/flashcards/<slug>.json`
 ```json

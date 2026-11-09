@@ -36,7 +36,8 @@ eztudy coverage topics.md [--out wiki/coverage.md] [--json]   # syllabus list ->
 eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
 eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
 eztudy render study/quizzes/x.json [...] [--strict] [--theme focus|editorial|terminal|system7|typewriter]
-                                   # validate + write x.md and an offline, click-only x.html player;
+                                   # validate + write x.md and an offline, click-only x.html player
+                                   # (`code` items get a real code editor with completions, lint, Vim keys);
                                    # warns on citation cids not in the index (--strict: exit 1)
 eztudy report import [files… | -]  # store performance reports the player saved (default: scan study/ + ~/Downloads)
 eztudy progress [--deck ID] [--json]   # mastery by topic (weak/learning/strong) + problem items, from all reports

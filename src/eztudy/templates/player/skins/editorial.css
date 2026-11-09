@@ -11,12 +11,18 @@
   --f-display: var(--f-read);
   --r: 10px; --r-card: 16px;
   --page-shade: rgba(60, 50, 30, .10);
+  --ed-bg: #FBFAF6; --ed-gutter: #FBFAF6; --ed-active: #F3F0E6; --ed-sel: #EFE2D6; --ed-cursor: #A84B2A;
+  --syn-keyword: #8F3A1E; --syn-string: #2C5E3B; --syn-number: #7A4A12; --syn-comment: #5E5A51; --syn-type: #2F4C78;
+  --syn-function: #264A6E; --syn-variable: #1F1E1B; --syn-operator: #4A463E; --syn-punct: #5E5A51;
 }
 [data-skin="editorial"][data-mode="dark"] {
   --bg: #262624; --surface: #30302E; --sunk: #3A3A37; --fg: #F0EEE6; --muted: #B9B4A8;
   --line: #4A4844; --line-strong: #8C877C; --accent: #D97757; --accent-ink: #EB9A7A; --sel: #46372F;
   --good: #84C495; --on-good: #1A1A18; --bad: #F0948A; --on-bad: #1A1A18; --btn: #E08A68; --on-btn: #1F1E1B;
   --page-shade: rgba(0, 0, 0, .35);
+  --ed-bg: #2B2B28; --ed-gutter: #2B2B28; --ed-active: #343430; --ed-sel: #4A3C33; --ed-cursor: #EB9A7A;
+  --syn-keyword: #EB9A7A; --syn-string: #9CCB9F; --syn-number: #E3BC8C; --syn-comment: #B9B4A8; --syn-type: #A3BEE3;
+  --syn-function: #B9D0EC; --syn-variable: #F0EEE6; --syn-operator: #D6D2C6; --syn-punct: #C2BDB1;
 }
 
 /* ---------- masthead ---------- */
@@ -113,6 +119,24 @@
 [data-skin="editorial"] .fc-face .tip { font-family: var(--f-read); font-style: italic; font-size: .9rem; }
 [data-skin="editorial"] .tag { font-family: var(--f-read); font-variant: all-small-caps; letter-spacing: .06em; font-size: .85rem; }
 [data-skin="editorial"] .mk span:last-child { font-family: var(--f-read); font-style: italic; font-size: .95rem; }
+
+/* ---------- code editor: a typeset listing. Paper ground, hairline rule for a gutter, rubric keywords,
+   serif italic comments, marginalia for the popup and the Vim line. ---------- */
+[data-skin="editorial"] .cm-editor.ez-editor { border-radius: 3px; border-color: var(--line); border-top: 2px solid var(--fg); border-bottom: 1px solid var(--line-strong); }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-gutters { border-right: 1px solid var(--line-strong); }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-lineNumbers .cm-gutterElement { font-family: var(--f-read); font-style: italic; font-size: .8rem; }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-activeLine { background: transparent; box-shadow: inset 0 -1px 0 var(--line); }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-activeLineGutter { background: transparent; }
+[data-skin="editorial"] .tok-keyword { font-weight: 700; }
+[data-skin="editorial"] .tok-comment { font-family: var(--f-read); font-size: 1.05em; }
+[data-skin="editorial"] .cm-editor .cm-tooltip { border-radius: 3px; box-shadow: 3px 3px 0 var(--line), 0 10px 24px -12px var(--page-shade); }
+[data-skin="editorial"] .cm-editor .cm-tooltip.ez-complete::before { font: italic 400 .8rem/1.3 var(--f-read); letter-spacing: 0; background: transparent; }
+[data-skin="editorial"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] { box-shadow: inset 2px 0 0 var(--accent-ink); }
+[data-skin="editorial"] .cm-editor .ez-complete .cm-completionIcon { border-radius: 0; background: transparent; font-style: italic; }
+[data-skin="editorial"] .cm-editor .cm-tooltip-lint { font-family: var(--f-read); font-size: .9rem; }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-panels { background: var(--ed-bg); border-top: 1px solid var(--line-strong); }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-vim-panel { font: italic 400 .85rem/1.6 var(--f-read); }
+[data-skin="editorial"] .cm-editor.ez-editor .cm-vim-panel input { font-family: var(--f-mono); font-style: normal; }
 
 @media (max-width: 520px) {
   [data-skin="editorial"] .q { font-size: 1.3rem; }

@@ -9,12 +9,18 @@
   --f-read: var(--f-ui); --f-display: var(--f-ui);
   --r: 3px; --r-card: 4px;
   --glow: none;
+  --ed-bg: #FBF7EE; --ed-gutter: #EFE7D8; --ed-active: #F3EADA; --ed-sel: #F0DCCD; --ed-cursor: #A84B2A;
+  --syn-keyword: #A33A1F; --syn-string: #36601F; --syn-number: #7D5200; --syn-comment: #62564B; --syn-type: #1B6670;
+  --syn-function: #7A3E8C; --syn-variable: #3B322A; --syn-operator: #8A4420; --syn-punct: #584D43;
 }
 [data-skin="terminal"][data-mode="dark"] {
   --bg: #1E1A16; --surface: #27221D; --sunk: #2E2822; --fg: #EDE4D3; --muted: #A89A87;
   --line: #3A332C; --line-strong: #8A7D6C; --accent: #E8916F; --accent-ink: #F0A584; --sel: #3A2A22;
   --good: #9CC48C; --on-good: #1E1A16; --bad: #EE8A78; --on-bad: #1E1A16; --btn: #F0A584; --on-btn: #1E1A16;
   --glow: 0 0 5px rgba(232, 145, 111, .4);
+  --ed-bg: #17130F; --ed-gutter: #201B16; --ed-active: #28221C; --ed-sel: #4A3425; --ed-cursor: #E8916F;
+  --syn-keyword: #F0A584; --syn-string: #B5D49A; --syn-number: #E9C46A; --syn-comment: #B0A18D; --syn-type: #7FCBC4;
+  --syn-function: #DDB0EA; --syn-variable: #EDE4D3; --syn-operator: #F2B48F; --syn-punct: #C4B8A5;
 }
 [data-skin="terminal"] body { font-size: .9375rem; }
 [data-skin="terminal"] .mono, [data-skin="terminal"] body { font-variant-ligatures: none; }
@@ -156,6 +162,43 @@
 [data-skin="terminal"] .mk[aria-pressed="true"] .ring { border-style: solid; }
 [data-skin="terminal"][data-mode="dark"] .mk[aria-pressed="true"] .ring { box-shadow: 0 0 10px currentColor; }
 [data-skin="terminal"] .mk span:last-child { text-transform: lowercase; }
+
+/* ---------- code editor: a vim session ---------- */
+[data-skin="terminal"] .cm-editor.ez-editor { border-radius: 0; border-style: solid; box-shadow: 4px 4px 0 var(--line); }
+[data-skin="terminal"] .cm-editor.ez-editor.cm-focused { outline-style: dashed !important; outline-offset: 3px; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-gutters { border-right: 1px dashed var(--line-strong); }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-lineNumbers .cm-gutterElement { opacity: .85; }
+[data-skin="terminal"] .cm-editor.ez-editor:not(.is-readonly) .cm-activeLineGutter { font-weight: 700; color: var(--accent-ink); }
+[data-skin="terminal"] .cm-editor.ez-editor:not(.is-readonly) .cm-lineNumbers .cm-activeLineGutter::before { content: ">"; margin-right: .4em; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-cursor, [data-skin="terminal"] .cm-editor.ez-editor .cm-dropCursor {
+  border-left: .6em solid var(--ed-cursor); margin-left: 0; opacity: .55;
+}
+[data-skin="terminal"] .cm-editor.ez-editor .cm-fat-cursor { opacity: 1; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-matchingBracket { outline-style: solid; }
+[data-skin="terminal"][data-mode="dark"] .tok-keyword { text-shadow: var(--glow); }
+[data-skin="terminal"] .tok-comment { font-style: normal; }
+[data-skin="terminal"] .tok-comment::before { content: none; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-lintRange { text-underline-offset: 2px; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-lint-marker { border-radius: 0; width: 8px; height: 8px; }
+[data-skin="terminal"] .cm-editor .cm-rubric-mark { text-shadow: var(--glow); }
+
+/* vim status line: inverse bar, mode in the accent */
+[data-skin="terminal"] .cm-editor.ez-editor .cm-panels { background: var(--ed-gutter); border-top: 1px solid var(--line-strong); }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-vim-panel { padding: 0 10px; font-weight: 700; color: var(--accent-ink); letter-spacing: .03em; text-shadow: var(--glow); }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-vim-panel input { color: var(--fg); text-shadow: none; }
+[data-skin="terminal"] .cm-editor.ez-editor .cm-vim-panel span { color: inherit; }
+
+/* completion popup: a terminal menu with an inverted selection */
+[data-skin="terminal"] .cm-editor .cm-tooltip { border-radius: 0; box-shadow: 4px 4px 0 var(--line-strong); }
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete::before { content: "-- local completions (no language server) --"; font-family: var(--f-ui); text-transform: lowercase; letter-spacing: 0; }
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li { padding: 1px 10px 1px 6px !important; }
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] { background: var(--btn) !important; color: var(--on-btn) !important; }
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionMatchedText,
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionDetail,
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionIcon { color: var(--on-btn); }
+[data-skin="terminal"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionIcon { background: transparent; }
+[data-skin="terminal"] .cm-editor .ez-complete .cm-completionIcon { border-radius: 0; background: transparent; }
+[data-skin="terminal"] .cm-editor .cm-tooltip-lint { font-family: var(--f-mono); }
 
 @media (max-width: 520px) {
   [data-skin="terminal"] .brand b::before { content: "$ "; }

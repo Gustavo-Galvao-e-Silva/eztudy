@@ -15,6 +15,9 @@
   --f-display: var(--f-type);
   --r: 3px; --r-card: 3px;
   --ml: 40px;  /* red margin line on the cards */
+  --ed-bg: #FFFCF5; --ed-gutter: #F2EADB; --ed-active: #F7F0E1; --ed-sel: #EBD6C8; --ed-cursor: #A32A22;
+  --syn-keyword: #A32A22; --syn-string: #8A3A1C; --syn-number: #1F5A80; --syn-comment: #62584F; --syn-type: #1F5A80;
+  --syn-function: #2A2520; --syn-variable: #2A2520; --syn-operator: #2A2520; --syn-punct: #4F463E;
 }
 [data-skin="typewriter"][data-mode="dark"] {
   --bg: #1E1A17; --surface: #2B2521; --sunk: #332C27; --fg: #E8DFCF; --muted: #A89C8C;
@@ -22,6 +25,9 @@
   --good: #7DB892; --on-good: #1E1A17; --bad: #E8957A; --on-bad: #1E1A17; --btn: #E8DFCF; --on-btn: #1E1A17;
   --desk-1: #231E1A; --desk-2: #1A1613; --lamp: rgba(255, 190, 120, .12);
   --key-edge: #8C7F6C; --tape: rgba(214, 196, 150, .55); --tape-edge: rgba(0, 0, 0, .3);
+  --ed-bg: #F6EEDD; --ed-gutter: #E1D6C0; --ed-active: #EDE3CE; --ed-sel: #DDC8B8; --ed-cursor: #93412A;
+  --syn-keyword: #912A20; --syn-string: #7C3519; --syn-number: #1D5276; --syn-comment: #574E46; --syn-type: #1D5276;
+  --syn-function: #2A2520; --syn-variable: #2A2520; --syn-operator: #2A2520; --syn-punct: #463E37;
 }
 /* The card keeps paper colours in both themes. */
 [data-skin="typewriter"][data-mode="dark"] .qbox,
@@ -29,6 +35,9 @@
   --surface: #EDE4D2; --sunk: #E1D6C0; --fg: #2A2520; --muted: #5F564E; --line: #CFC2AA; --line-strong: #5F564E;
   --accent-ink: #93412A; --sel: #E9D3C4; --good: #2A6140; --on-good: #FFFFFF; --bad: #93412A; --on-bad: #FFFFFF;
   --btn: #2A2520; --on-btn: #EDE4D2; --rule-blue: #A9C1D2; --rule-red: #CC8E8E;
+  --ed-bg: #F6EEDD; --ed-gutter: #E1D6C0; --ed-active: #EDE3CE; --ed-sel: #DDC8B8; --ed-cursor: #93412A;
+  --syn-keyword: #912A20; --syn-string: #7C3519; --syn-number: #1D5276; --syn-comment: #574E46; --syn-type: #1D5276;
+  --syn-function: #2A2520; --syn-variable: #2A2520; --syn-operator: #2A2520; --syn-punct: #463E37;
 }
 /* The date-due card on the results screen is paper too. */
 [data-skin="typewriter"][data-mode="dark"] .col:has(> .score) {
@@ -181,6 +190,29 @@
 [data-skin="typewriter"] pre.code {
   background: var(--sunk); border: 1px solid var(--line); border-left: 3px double var(--line-strong); border-radius: 1px;
 }
+
+/* ---------- code editor: typed on paper, two-colour ribbon ---------- */
+[data-skin="typewriter"] .cm-editor.ez-editor {
+  border: 1.5px dashed var(--line-strong); border-radius: 2px; box-shadow: 1px 2px 0 rgba(60, 40, 20, .12);
+}
+/* Code needs a fixed pitch: Courier keeps the typewriter look and lines code up in columns. */
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-scroller { font-family: "Courier New", Courier, ui-monospace, monospace; line-height: 1.55; }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-content { text-shadow: .4px .3px 0 rgba(42, 37, 32, .22); }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-gutters { border-right: 3px double var(--rule-red); }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-cursor, [data-skin="typewriter"] .cm-editor.ez-editor .cm-dropCursor {
+  border-left: 0; width: .6em; border-bottom: 3px solid var(--ed-cursor); margin-left: 0;
+}
+[data-skin="typewriter"] .cm-editor.ez-editor .tok-comment { font-style: normal; text-decoration: underline dotted 1px; text-underline-offset: 3px; }
+[data-skin="typewriter"] .cm-editor.ez-editor .tok-keyword { font-weight: 700; }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-activeLine { box-shadow: inset 0 -1px 0 var(--rule-blue); }
+[data-skin="typewriter"] .cm-editor .cm-tooltip {
+  border: 1px solid var(--line-strong) !important; border-left: 4px solid var(--rule-red) !important; border-radius: 1px; box-shadow: 2px 3px 0 rgba(60, 40, 20, .2);
+}
+[data-skin="typewriter"] .cm-editor .cm-tooltip.ez-complete::before { text-transform: uppercase; letter-spacing: .12em; font-family: var(--f-type); border-bottom: 1px dashed var(--line-strong); }
+[data-skin="typewriter"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] { box-shadow: inset 3px 0 0 var(--accent-ink); }
+[data-skin="typewriter"] .cm-editor .ez-complete .cm-completionIcon { border-radius: 1px; border: 1px solid var(--line-strong); background: transparent; }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-panels { border-top: 1px dashed var(--line-strong); }
+[data-skin="typewriter"] .cm-editor.ez-editor .cm-vim-panel { font-family: var(--f-type); text-transform: uppercase; letter-spacing: .12em; }
 
 /* ---------- progress ---------- */
 [data-skin="typewriter"] .dot { border-radius: 2px; border-color: var(--fg); }
