@@ -106,7 +106,7 @@ def test_render_quiz_and_flashcards(tmp_path):
     ]}
     p = tmp_path / "quiz.json"
     p.write_text(json.dumps(quiz))
-    md, html = render(p)
+    md, html, _ = render(p)
     assert "## Answer key" in md.read_text() and "1. **B**" in md.read_text()
     page = html.read_text()
     assert "Powerhouse?" in page and "/*__EZTUDY_DATA__*/" not in page
@@ -118,5 +118,22 @@ def test_render_quiz_and_flashcards(tmp_path):
     cards = {"type": "flashcards", "title": "Cards", "items": [{"front": "ATP?", "back": "Energy | currency", "citations": ["x"]}]}
     p = tmp_path / "cards.json"
     p.write_text(json.dumps(cards))
-    md, _ = render(p)
+    md, _, _ = render(p)
     assert "Energy \\| currency" in md.read_text()
+
+
+def test_render_warns_on_unknown_cids(notebook, fake_embedder, capsys):
+    ws = find_workspace(notebook)
+    cmd_index(ws, args("index"), embedder=fake_embedder)
+    cid = vectordb.connect(ws.db_path).execute("SELECT cid FROM chunks LIMIT 1").fetchone()[0]
+    quiz = {"type": "quiz", "title": "Q", "items": [
+        {"type": "true_false", "question": "ok", "answer": True, "citations": [{"cid": cid}]},
+        {"id": "typo", "type": "true_false", "question": "bad", "answer": True, "citations": [{"cid": "deadbeef:99"}]},
+    ]}
+    p = notebook / "q.json"
+    p.write_text(json.dumps(quiz))
+    capsys.readouterr()
+    assert main(["-C", str(notebook), "render", str(p)]) == 0
+    err = capsys.readouterr().err
+    assert "item 2 (typo): unknown chunk id 'deadbeef:99'" in err and cid not in err
+    assert main(["-C", str(notebook), "render", str(p), "--strict"]) == 1

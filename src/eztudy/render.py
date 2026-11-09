@@ -60,6 +60,20 @@ def validate(data: dict) -> list[str]:
     return errs
 
 
+def unknown_citations(data: dict, known_cids: set[str]) -> list[str]:
+    """Warnings for citation objects whose `cid` is not a chunk in the index (likely a typo)."""
+    warns = []
+    for n, it in enumerate(data.get("items") or [], start=1):
+        if not isinstance(it, dict):
+            continue
+        where = f"item {n}" + (f" ({it['id']})" if it.get("id") else "")
+        for c in it.get("citations") or []:
+            cid = c.get("cid") if isinstance(c, dict) else None
+            if cid and cid not in known_cids:
+                warns.append(f"{where}: unknown chunk id {cid!r}")
+    return warns
+
+
 def load(path: Path) -> dict:
     try:
         data = json.loads(path.read_text())
@@ -126,9 +140,11 @@ def to_html(data: dict) -> str:
     )
 
 
-def render(path: Path) -> tuple[Path, Path]:
+def render(path: Path, known_cids: set[str] | None = None) -> tuple[Path, Path, list[str]]:
+    """Validate and write .md + .html. Returns (md, html, warnings); warnings need `known_cids`."""
     data = load(path)
+    warns = unknown_citations(data, known_cids) if known_cids is not None else []
     md_path, html_path = path.with_suffix(".md"), path.with_suffix(".html")
     md_path.write_text(to_markdown(data))
     html_path.write_text(to_html(data))
-    return md_path, html_path
+    return md_path, html_path, warns
