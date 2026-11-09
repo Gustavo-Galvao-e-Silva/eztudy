@@ -64,6 +64,38 @@ const store = {
   set(v) { try { localStorage.setItem(this.key, JSON.stringify(v)); } catch {} },
 };
 
+/* ---------------- performance report (picked up by `eztudy report import`) ---------------- */
+const newSession = () => ({ id: Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8), started: new Date().toISOString(), recorded: false });
+const makeReport = (session, items, score) => ({
+  eztudy_report: 1, kind: DATA.type === "flashcards" ? "flashcards" : "quiz",
+  deck: { id: DATA.id || DATA.title, title: DATA.title }, session: session.id,
+  started_at: session.started, finished_at: new Date().toISOString(), score, items,
+});
+const reportName = r => `${String(r.deck.id).replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "deck"}.${r.finished_at.replace(/[-:]/g, "").slice(0, 15)}.eztudy-report.json`;
+function saveReport(r) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(r, null, 2)], { type: "application/json" }));
+  const a = h("a", { href: url, download: reportName(r) });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  say("Report saved. Ask your agent to run eztudy report import.");
+}
+function copyReport(r, btn) {
+  const text = JSON.stringify(r, null, 2);
+  const done = ok => { btn.textContent = ok ? "Copied" : "Copy failed"; say(ok ? "Report copied. Paste it to your agent." : "Could not copy the report."); };
+  const fallback = () => {
+    const ta = h("textarea", { style: "position:fixed;opacity:0" }); ta.value = text; document.body.append(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {} ta.remove(); done(ok);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => done(true), fallback);
+  else fallback();
+}
+const reportBox = r => {
+  const copy = h("button", { type: "button", class: "btn ghost", onclick: () => copyReport(r, copy) }, "Copy report");
+  return h("section", { class: "sect report" }, h("h2", {}, "Performance report"),
+    h("p", { class: "expl" }, "Save this session for your study agent so the next quiz or deck targets what you missed."),
+    h("div", { class: "actions" }, h("button", { type: "button", class: "btn ghost", onclick: () => saveReport(r) }, "Save report"), copy));
+};
+
 const stage = $("#stage");
 $("#title").textContent = DATA.title;
 $("#desc").textContent = DATA.description || "";
@@ -112,7 +144,7 @@ const menuAction = (label, fn, disabled = false) =>
 /* ---------------- quiz ---------------- */
 function quiz(items) {
   const instant = DATA.instant_feedback === true;
-  let order = items.map((_, i) => i), pos = 0, states = {};
+  let order = items.map((_, i) => i), pos = 0, states = {}, session = newSession();
   const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: "" });
   const optionsOf = it => it.type === "true_false" ? ["True", "False"] : (it.options || []);
   const correctIdx = it => it.type === "true_false" ? [it.answer === true || it.answer === "true" ? 0 : 1]
@@ -125,7 +157,7 @@ function quiz(items) {
       menuAction(`Retry missed (${missed.length})`, () => start(shuffle(missed)), !missed.length),
       menuAction("Restart (shuffled)", () => start(shuffle(items.map((_, i) => i))))));
   };
-  function start(newOrder) { order = newOrder; pos = 0; states = {}; render(); }
+  function start(newOrder) { order = newOrder; pos = 0; states = {}; session = newSession(); render(); }
 
   function progress() {
     const dots = h("nav", { class: "dots", "aria-label": "Questions" }, order.map((qi, p) => {
@@ -255,7 +287,8 @@ function quiz(items) {
   function summary() {
     const total = order.length, right = order.filter(i => states[i].ok).length;
     const missed = order.filter(i => !states[i].ok);
-    const hist = store.get(); (hist.attempts ||= []).push({ at: new Date().toISOString(), right, total }); store.set(hist);
+    const hist = store.get(); hist.attempts ||= [];
+    if (!session.recorded) { hist.attempts.push({ at: new Date().toISOString(), right, total }); store.set(hist); session.recorded = true; }
     const best = Math.max(...hist.attempts.map(a => a.right / a.total));
     setCount("Results");
     const topics = {};
@@ -265,7 +298,14 @@ function quiz(items) {
       if (it.type === "short") return st.draft.trim() ? "self-graded: missed" : "(left blank)";
       return [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; ") || "—";
     };
-    stage.replaceChildren(...progress(),
+    session.report ||= makeReport(session, order.map(i => {
+      const it = items[i], st = states[i];
+      return { id: it.id || `q${i + 1}`, type: it.type, topic: it.topic || null, tags: it.tags || [], difficulty: it.difficulty || null,
+        question: it.question, result: st.ok ? "correct" : "wrong", graded: it.type === "short" ? "self" : "auto",
+        given: it.type === "short" ? st.draft : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
+        correct_answer: it.type === "short" ? it.answer : answerText(it) };
+    }), { right, total });
+    stage.replaceChildren(...[...progress(),
       h("div", { class: "score" }, h("span", { class: "big" }, right), h("span", { class: "of" }, `of ${total} · ${Math.round(right / total * 100)}% · best ${Math.round(best * 100)}% over ${hist.attempts.length} attempt${hist.attempts.length > 1 ? "s" : ""}`)),
       Object.keys(topics).length > 1 ? h("section", { class: "sect" }, h("h2", {}, "By topic"), h("ul", { class: "topics" }, Object.entries(topics).map(([t, [r, n]]) =>
         h("li", {}, h("span", { class: "tn", title: t }, t), h("span", { class: "track" }, h("i", { style: `width:${r / n * 100}%` })), h("span", { class: "n" }, `${r}/${n}`))))) : null,
@@ -277,9 +317,10 @@ function quiz(items) {
               h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : answerText(it))),
             explain(it));
         })) : h("p", { class: "expl" }, "Every answer was right.")),
+      reportBox(session.report),
       h("div", { class: "actions" }, h("span", { class: "spacer" }),
         missed.length ? h("button", { type: "button", class: "btn ghost", onclick: () => start(shuffle(missed)) }, `Retry missed (${missed.length})`) : null,
-        h("button", { type: "button", class: "btn", onclick: () => start(shuffle(items.map((_, i) => i))) }, "Restart (shuffled)")));
+        h("button", { type: "button", class: "btn", onclick: () => start(shuffle(items.map((_, i) => i))) }, "Restart (shuffled)"))].filter(Boolean));
   }
   render();
 }
@@ -295,7 +336,7 @@ function flashcards(items) {
     delete saved.known;
   }
   const marks = saved.marks, save = () => store.set(saved);
-  let tag = "", deck = [], pos = 0, rot = 0, end = false;
+  let tag = "", deck = [], pos = 0, rot = 0, end = false, session = newSession(), seen = new Set();
 
   menuExtras = () => h("section", {}, h("h2", {}, "Flashcards"), h("div", { class: "choices" },
     allTags.length ? h("select", { "aria-label": "Filter by tag", onchange: e => { tag = e.target.value; closeMenu(); build(); } },
@@ -304,7 +345,7 @@ function flashcards(items) {
 
   function build(onlyLearning = false) {
     deck = items.map((_, i) => i).filter(i => (!tag || (items[i].tags || []).includes(tag)) && (!onlyLearning || marks[ids[i]] === "learn"));
-    pos = 0; rot = 0; end = false;
+    pos = 0; rot = 0; end = false; session = newSession(); seen = new Set();
     render();
   }
   const pool = () => items.map((_, i) => i).filter(i => !tag || (items[i].tags || []).includes(tag));
@@ -318,6 +359,7 @@ function flashcards(items) {
     if (end || !deck.length) return finish(tally);
     setCount(`${pos + 1} / ${deck.length}`);
     const i = deck[pos], card = items[i], mark = marks[ids[i]];
+    seen.add(i);
     const flipped = rot % 360 !== 0;
     const inner = h("div", { class: "fc-inner", style: `transform: rotateY(${rot}deg)` },
       h("div", { class: "fc-face front", "aria-hidden": String(flipped) },
@@ -362,12 +404,17 @@ function flashcards(items) {
   function finish(tally) {
     setCount("Done");
     const c = counts(deck), unmarked = deck.length - c.know - c.learn;
-    stage.append(h("div", { class: "fc-top" }, h("span"), tally),
+    const reviewed = deck.filter(i => seen.has(i));
+    const r = reviewed.length ? makeReport(session, reviewed.map(i => ({
+      id: ids[i], tags: items[i].tags || [], front: items[i].front, correct_answer: items[i].back,
+      result: marks[ids[i]] || "unmarked" })), { ...counts(reviewed), unmarked: reviewed.length - counts(reviewed).know - counts(reviewed).learn }) : null;
+    stage.append(...[h("div", { class: "fc-top" }, h("span"), tally),
       h("div", { class: "score" }, h("span", { class: "big" }, deck.length ? `✓ ${c.know}` : "0"),
         h("span", { class: "of" }, deck.length ? `known · ${c.learn} still learning${unmarked ? ` · ${unmarked} unmarked` : ""}` : "No cards match this filter.")),
+      r ? reportBox(r) : null,
       h("div", { class: "actions" }, h("span", { class: "spacer" }),
         h("button", { type: "button", class: "btn ghost", disabled: !counts(pool()).learn, onclick: () => build(true) }, `Review ✗ cards (${counts(pool()).learn})`),
-        h("button", { type: "button", class: "btn", onclick: () => build(false) }, "Start over")));
+        h("button", { type: "button", class: "btn", onclick: () => build(false) }, "Start over"))].filter(Boolean));
   }
   build();
 }

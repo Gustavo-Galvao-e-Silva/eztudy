@@ -12,6 +12,8 @@ ask your agent to study them. The agent does the rest:
   hybrid semantic + keyword search with page-level citations. No API keys, no servers.
 - **Study material** — quizzes, flashcards (both with a self-contained interactive HTML player),
   study guides, briefing docs, FAQs, glossaries, timelines, mind maps, audio-overview scripts.
+- **Adaptive practice** — finish a quiz or deck, hit *Save report*, and the agent imports it, tracks
+  mastery per topic, notes your misconceptions in `wiki/learner.md`, and aims the next quiz at your weak spots.
 - **Bookkeeping** — sources are tracked by content hash, so agents can rename and reorganize
   `sources/` freely without re-indexing.
 
@@ -48,7 +50,8 @@ cd ~/notebooks/biology && claude
 > use eztudy: index my sources, build the wiki, and make me a 15-question quiz on chapter 2
 ```
 
-Then open `study/quizzes/*.html` in a browser.
+Then open `study/quizzes/*.html` in a browser. When you finish, click **Save report** and tell the agent
+("I finished the quiz"): it imports the report and tailors the next quiz or deck to what you missed.
 
 The CLI is usable directly too (`bin/eztudy` in this repo):
 
@@ -63,6 +66,8 @@ eztudy sources                    list tracked sources
 eztudy coverage topics.md         syllabus topics -> covered / partial / missing
 eztudy wiki init|lint [--fix]|log|cite
 eztudy render study/quizzes/x.json [--theme editorial]   (skins: focus, editorial, terminal, system7, typewriter)
+eztudy report import [files|-]    store reports saved by the player (scans study/ and ~/Downloads)
+eztudy progress [--json]          mastery by topic + problem items across all sessions
 ```
 
 ## Layout of a notebook
