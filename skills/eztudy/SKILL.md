@@ -34,6 +34,15 @@ eztudy wiki init | lint [--json] | log "ingest | Title" [--detail "..."]
 eztudy render study/quizzes/x.json [...]      # validate + write x.md and interactive x.html
 ```
 
+`search --json` prints a list of hits, best first:
+```json
+[{"cid": "3fa9c2d1:12", "path": "bio/cells.pdf", "title": "Cell Biology Notes", "type": "pdf",
+  "heading": "Organelles > Mitochondria", "location": "pages 4-5", "score": 0.032258,
+  "text": "…chunk text…", "citation": "bio/cells.pdf (pages 4-5)"}]
+```
+`type` is one of `pdf | docx | pptx | html | code | markdown | text`; `location` is `page N`, `pages N-M`,
+`slide N`… or `""` when the source has no page/slide markers. `score` is only comparable within one query.
+
 The CLI finds the notebook by walking up from cwd to a dir containing `sources/`; pass `-C <dir>` otherwise.
 Never read binary sources (PDF/DOCX/PPTX) directly — use `eztudy show <path>`; it is faster and has page markers.
 

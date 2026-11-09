@@ -72,6 +72,8 @@ def test_index_search_and_move(notebook, fake_embedder, capsys):
     cmd_search(ws, args("search", "Calvin cycle RuBisCO", "--json"), embedder=fake_embedder)
     out = json.loads(capsys.readouterr().out)
     assert out[0]["path"] == "bio/plants.docx" and out[0]["heading"].endswith("Calvin Cycle")
+    assert out[0]["type"] == "docx" and "title" in out[0]
+    assert {"cid", "path", "title", "type", "heading", "location", "score", "text", "citation"} <= out[0].keys()
     assert main(["-C", str(notebook), "show", out[0]["cid"]]) == 0
 
 

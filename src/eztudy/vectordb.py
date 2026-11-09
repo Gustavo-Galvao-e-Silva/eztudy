@@ -148,7 +148,10 @@ class Hit:
         return f"{self.path}" + (f" ({self.location})" if self.location else "")
 
     def to_dict(self) -> dict:
+        from .extract import source_type
+
         d = asdict(self)
+        d["type"] = source_type(self.path)
         d["citation"] = self.citation
         return d
 

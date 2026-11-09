@@ -18,6 +18,12 @@ TEXT_EXTS = {
     ".h", ".cpp", ".hpp", ".cs", ".swift", ".php", ".sh", ".sql", ".r", ".m", ".scala",
     ".lua", ".hs", ".ex", ".exs", ".clj", ".jl", ".ipynb",
 }
+CODE_EXTS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".kt", ".go", ".rs", ".rb", ".c", ".h", ".cpp",
+    ".hpp", ".cs", ".swift", ".php", ".sh", ".sql", ".r", ".m", ".scala", ".lua", ".hs", ".ex",
+    ".exs", ".clj", ".jl", ".ipynb",
+}
+MARKDOWN_EXTS = {".md", ".markdown", ".mdx"}
 HTML_EXTS = {".html", ".htm"}
 MARKER_RE = re.compile(r"<!--\s*(page|slide)\s+(\d+)\s*-->")
 
@@ -29,6 +35,20 @@ class UnsupportedSource(Exception):
 def supported(path: Path) -> bool:
     ext = path.suffix.lower()
     return ext in TEXT_EXTS | HTML_EXTS | {".pdf", ".docx", ".pptx"} or _looks_textual(path)
+
+
+def source_type(path: str | Path) -> str:
+    """Coarse kind of a source, for display/filtering: pdf, docx, pptx, html, code, markdown or text."""
+    ext = Path(path).suffix.lower()
+    if ext in (".pdf", ".docx", ".pptx"):
+        return ext[1:]
+    if ext in HTML_EXTS:
+        return "html"
+    if ext in CODE_EXTS:
+        return "code"
+    if ext in MARKDOWN_EXTS:
+        return "markdown"
+    return "text"
 
 
 def extract(path: Path) -> tuple[str, str]:
