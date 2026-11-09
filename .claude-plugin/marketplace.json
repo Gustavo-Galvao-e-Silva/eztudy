@@ -1,0 +1,13 @@
+{
+  "name": "eztudy",
+  "description": "Marketplace for the eztudy plugin.",
+  "owner": { "name": "Gustavo Galvão" },
+  "plugins": [
+    {
+      "name": "eztudy",
+      "source": "./",
+      "description": "Local, open-source NotebookLM: wiki + SQLite vector index over a sources/ dir, plus quizzes, flashcards and study guides.",
+      "category": "productivity"
+    }
+  ]
+}

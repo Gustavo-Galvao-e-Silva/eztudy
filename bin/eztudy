@@ -1,0 +1,15 @@
+#!/bin/sh
+# eztudy CLI wrapper. As a Claude Code plugin, this bin/ dir is on the Bash PATH.
+# Runs the CLI from this repo's uv project; dependencies install on first run.
+SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+# Installed plugins live in a versioned, read-mostly cache dir; keep the venv outside it
+# so it survives plugin updates (uv just re-syncs it to the new lockfile).
+case "$ROOT" in
+  */.claude/plugins/*)
+    : "${UV_PROJECT_ENVIRONMENT:=${XDG_CACHE_HOME:-$HOME/.cache}/eztudy/venv}"
+    export UV_PROJECT_ENVIRONMENT ;;
+esac
+
+exec uv run --quiet --frozen --project "$ROOT" eztudy "$@"

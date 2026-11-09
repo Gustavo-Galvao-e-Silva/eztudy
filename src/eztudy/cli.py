@@ -1,0 +1,447 @@
+"""eztudy command line: deterministic bookkeeping for an agent-run study notebook."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import re
+import sys
+from pathlib import Path
+
+from . import chunk as chunking
+from . import extract as extracting
+from . import manifest as mf
+from . import render as rendering
+from . import vectordb, wiki
+from .workspace import Workspace, WorkspaceError, find_workspace
+
+CID_RE = re.compile(r"^[0-9a-f]{8}:\d+$")
+
+
+def _print_json(obj) -> None:
+    print(json.dumps(obj, indent=2, ensure_ascii=False))
+
+
+# --- sync (extract) ------------------------------------------------------------
+
+
+def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dict:
+    """Bring manifest + extracted-text cache in line with sources/."""
+    ws.ensure_state()
+    data = mf.load(ws)
+    diff = mf.scan(ws, data)
+    entries = data["sources"]
+    log = {"extracted": [], "moved": [], "deleted": [], "unsupported": [], "errors": []}
+
+    for old, new in diff.moved:
+        entries[new] = {**entries.pop(old), **diff.current[new]}
+        log["moved"].append({"from": old, "to": new})
+    for rel in diff.deleted:
+        entries.pop(rel, None)
+        log["deleted"].append(rel)
+
+    todo = set(diff.new) | set(diff.changed)
+    for rel in diff.unchanged:
+        e = entries[rel]
+        e.update(diff.current[rel])  # refresh mtime after a touch
+        if force or (e.get("status") == "ok" and not (ws.text_dir / f"{e['hash']}.md").exists()):
+            todo.add(rel)
+
+    for rel in sorted(todo):
+        cur = diff.current[rel]
+        entry = {**cur}
+        try:
+            title, text = extracting.extract(ws.sources / rel)
+            (ws.text_dir / f"{cur['hash']}.md").write_text(text)
+            entry.update(status="ok", title=title, chars=len(text))
+            log["extracted"].append(rel)
+        except extracting.UnsupportedSource as e:
+            entry.update(status="unsupported", reason=str(e))
+            log["unsupported"].append({"path": rel, "reason": str(e)})
+        except Exception as e:  # noqa: BLE001 - surface any extractor failure to the agent
+            entry.update(status="error", reason=f"{type(e).__name__}: {e}")
+            log["errors"].append({"path": rel, "reason": entry["reason"]})
+        entries[rel] = entry
+
+    # Garbage-collect cached text no longer referenced by any source.
+    live = {e["hash"] for e in entries.values()}
+    for f in ws.text_dir.glob("*.md"):
+        if f.stem not in live:
+            f.unlink()
+
+    mf.save(ws, data)
+    if not quiet:
+        for k, label in [("extracted", "extracted"), ("moved", "moved"), ("deleted", "removed")]:
+            for item in log[k]:
+                print(f"  {label}: {item if isinstance(item, str) else item['from'] + ' -> ' + item['to']}")
+        for item in log["unsupported"] + log["errors"]:
+            print(f"  skipped: {item['path']} ({item['reason']})")
+    return log
+
+
+def _docs(ws: Workspace) -> dict[str, dict]:
+    """hash -> {path, title, chars} for every successfully extracted source (first path wins)."""
+    out: dict[str, dict] = {}
+    for rel, e in mf.load(ws)["sources"].items():
+        if e.get("status") == "ok" and e["hash"] not in out:
+            out[e["hash"]] = {"path": rel, "title": e.get("title") or Path(rel).stem, "chars": e.get("chars", 0)}
+    return out
+
+
+# --- commands ------------------------------------------------------------------
+
+
+def cmd_status(ws: Workspace, args) -> int:
+    data = mf.load(ws)
+    diff = mf.scan(ws, data)
+    entries = data["sources"]
+    by_status: dict[str, int] = {}
+    for e in entries.values():
+        by_status[e.get("status", "?")] = by_status.get(e.get("status", "?"), 0) + 1
+
+    vec = {"exists": ws.db_path.exists()}
+    if ws.db_path.exists():
+        db = vectordb.connect(ws.db_path)
+        indexed = vectordb.indexed_docs(db)
+        docs = _docs(ws)
+        vec.update(vectordb.stats(db))
+        vec["unindexed"] = sorted(d["path"] for h, d in docs.items() if h not in indexed)
+        vec["orphaned"] = sorted(p for h, p in indexed.items() if h not in docs)
+    report = wiki.lint(ws, data)
+    status = {
+        "root": str(ws.root),
+        "sources": {"tracked": len(entries), **by_status},
+        "pending": diff.to_dict(),
+        "vector_index": vec,
+        "wiki": {
+            "pages": report["pages"],
+            "uncovered_sources": report["uncovered_sources"],
+            "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k != "uncovered_sources" and v},
+        },
+        "study": sorted(p.relative_to(ws.root).as_posix() for p in ws.study.rglob("*") if p.is_file()) if ws.study.exists() else [],
+    }
+    if args.json:
+        _print_json(status)
+        return 0
+    print(f"notebook: {ws.root}")
+    print(f"sources:  {len(entries)} tracked " + ", ".join(f"{v} {k}" for k, v in by_status.items()))
+    p = status["pending"]
+    if diff.dirty:
+        print(f"pending:  {len(p['new'])} new, {len(p['changed'])} changed, {len(p['moved'])} moved, {len(p['deleted'])} deleted  -> run `eztudy sync`")
+        for k in ("new", "changed", "deleted"):
+            for rel in p[k]:
+                print(f"  {k}: {rel}")
+        for m in p["moved"]:
+            print(f"  moved: {m['from']} -> {m['to']}")
+    else:
+        print("pending:  none")
+    if vec["exists"]:
+        print(f"vectors:  {vec['documents']} docs / {vec['chunks']} chunks ({vec['embedding_model']})"
+              + (f"; {len(vec['unindexed'])} unindexed, {len(vec['orphaned'])} orphaned -> run `eztudy index`" if vec["unindexed"] or vec["orphaned"] else ""))
+    else:
+        print("vectors:  not built (run `eztudy index`)")
+    w = status["wiki"]
+    print(f"wiki:     {w['pages']} pages; {len(w['uncovered_sources'])} sources not yet cited by any page"
+          + (f"; issues: {w['issues']} -> run `eztudy wiki lint`" if w["issues"] else ""))
+    if status["study"]:
+        print(f"study:    {len(status['study'])} files in study/")
+    return 0
+
+
+def cmd_sync(ws: Workspace, args) -> int:
+    print("syncing sources…")
+    log = sync_sources(ws, force=args.force)
+    print(f"done: {len(log['extracted'])} extracted, {len(log['moved'])} moved, {len(log['deleted'])} removed, "
+          f"{len(log['unsupported']) + len(log['errors'])} skipped")
+    return 0
+
+
+def cmd_index(ws: Workspace, args, embedder=None) -> int:
+    sync_sources(ws, quiet=True)
+    docs = _docs(ws)
+    db = vectordb.connect(ws.db_path)
+    if args.rebuild:
+        vectordb.reset(db)
+    indexed = vectordb.indexed_docs(db)
+    removed = [h for h in indexed if h not in docs]
+    for h in removed:
+        vectordb.delete_doc(db, h)
+    moved = 0
+    for h, d in docs.items():
+        if h in indexed and indexed[h] != d["path"]:
+            vectordb.update_path(db, h, d["path"])
+            moved += 1
+    db.commit()
+
+    todo = [h for h in docs if h not in indexed or args.rebuild]
+    model = ws.config["embedding_model"]
+    if todo or vectordb.get_meta(db, "embedding_model") != model:
+        if embedder is None:
+            from .embed import Embedder
+
+            embedder = Embedder(model)
+        if vectordb.ensure_vec_table(db, embedder.model_name, embedder.dim):
+            print(f"embedding model changed -> rebuilding index with {embedder.model_name}")
+            todo = list(docs)
+    total_chunks = 0
+    for n, h in enumerate(todo, start=1):
+        d = docs[h]
+        text = (ws.text_dir / f"{h}.md").read_text()
+        chunks = chunking.chunk_markdown(text, ws.config["chunk_tokens"], ws.config["chunk_overlap"])
+        if not chunks:
+            continue
+        embed_inputs = [f"{d['title']}\n{c.heading}\n{c.text}" if c.heading else f"{d['title']}\n{c.text}" for c in chunks]
+        vectors = embedder.embed_documents(embed_inputs)
+        vectordb.add_doc(db, h, d["path"], d["title"], d["chars"], chunks, vectors)
+        db.commit()
+        total_chunks += len(chunks)
+        print(f"  [{n}/{len(todo)}] {d['path']}: {len(chunks)} chunks")
+    st = vectordb.stats(db)
+    print(f"index: +{len(todo)} docs ({total_chunks} chunks), -{len(removed)} removed, {moved} path updates; "
+          f"total {st['documents']} docs / {st['chunks']} chunks")
+    return 0
+
+
+def cmd_search(ws: Workspace, args, embedder=None) -> int:
+    if not ws.db_path.exists():
+        print("no vector index yet; run `eztudy index` first", file=sys.stderr)
+        return 2
+    db = vectordb.connect(ws.db_path)
+    qvec = None
+    if args.mode != "fts":
+        model = vectordb.get_meta(db, "embedding_model")
+        if not model:
+            print("vector index is empty; run `eztudy index`", file=sys.stderr)
+            return 2
+        if embedder is None:
+            from .embed import Embedder
+
+            embedder = Embedder(model)
+        qvec = embedder.embed_query(args.query)
+    hits = vectordb.search(db, args.query, qvec, k=args.k, mode=args.mode, path_prefix=args.path)
+    if args.json:
+        _print_json([h.to_dict() for h in hits])
+        return 0
+    if not hits:
+        print("no results")
+    for n, hit in enumerate(hits, start=1):
+        head = f" — {hit.heading}" if hit.heading else ""
+        print(f"[{n}] {hit.cid}  {hit.citation}{head}  (score {hit.score:.4f})")
+        body = hit.text if args.full or len(hit.text) <= 700 else hit.text[:700].rstrip() + " …"
+        print("    " + body.replace("\n", "\n    "))
+        print()
+    return 0
+
+
+def cmd_show(ws: Workspace, args) -> int:
+    target = args.target
+    if CID_RE.match(target):
+        db = vectordb.connect(ws.db_path)
+        hits = vectordb.get_chunk(db, target, context=args.context)
+        if not hits:
+            print(f"chunk {target} not found (index may be stale; run `eztudy index`)", file=sys.stderr)
+            return 1
+        for hit in hits:
+            print(f"--- {hit.cid}  {hit.citation}" + (f" — {hit.heading}" if hit.heading else ""))
+            print(hit.text)
+            print()
+        return 0
+    rel = target.removeprefix("sources/")
+    entries = mf.load(ws)["sources"]
+    e = entries.get(rel)
+    if e is None:
+        matches = [p for p in entries if rel.lower() in p.lower()]
+        if len(matches) == 1:
+            rel, e = matches[0], entries[matches[0]]
+        else:
+            print(f"no tracked source matches {target!r}" + (f"; candidates: {matches}" if matches else " (run `eztudy sync`?)"), file=sys.stderr)
+            return 1
+    if e.get("status") != "ok":
+        print(f"{rel}: not extracted ({e.get('reason', e.get('status'))})", file=sys.stderr)
+        return 1
+    text = (ws.text_dir / f"{e['hash']}.md").read_text()
+    if args.pages:
+        a, _, b = args.pages.partition("-")
+        lo, hi = int(a), int(b or a)
+        parts = re.split(r"(<!--\s*(?:page|slide)\s+\d+\s*-->)", text)
+        keep, cur = [], None
+        for part in parts:
+            m = extracting.MARKER_RE.fullmatch(part.strip())
+            if m:
+                cur = int(m.group(2))
+            if cur is not None and lo <= cur <= hi:
+                keep.append(part)
+        text = "".join(keep) or f"(no page/slide markers in range {args.pages})"
+    print(f"# {e.get('title')}  [sources/{rel}]  hash {e['hash'][:8]}")
+    print(text)
+    return 0
+
+
+def cmd_sources(ws: Workspace, args) -> int:
+    entries = mf.load(ws)["sources"]
+    rows = [{"path": p, "hash": e["hash"][:8], "status": e.get("status"), "title": e.get("title"), "chars": e.get("chars", 0)} for p, e in entries.items()]
+    if args.json:
+        _print_json(rows)
+        return 0
+    if not rows:
+        print("no sources tracked yet; run `eztudy sync`")
+    for r in rows:
+        flag = "" if r["status"] == "ok" else f"  [{r['status']}]"
+        print(f"{r['hash']}  {r['chars']:>8,} ch  {r['path']}  — {r['title'] or ''}{flag}")
+    return 0
+
+
+WIKI_INDEX = """---
+title: Index
+type: index
+---
+
+# {name} — Wiki Index
+
+Catalog of every page in this wiki. Keep one line per page: `[[page]] — one-line description`.
+Agents: read this first when answering questions; update it on every ingest.
+
+## Overview
+
+## Topics
+
+## Entities
+
+## Source summaries
+"""
+
+WIKI_LOG = """---
+title: Log
+type: log
+---
+
+# Log
+
+Append-only record of ingests, queries filed back, and lint passes. Newest at the bottom.
+Format: `## [YYYY-MM-DD] <action> | <subject>`
+"""
+
+
+def cmd_wiki(ws: Workspace, args) -> int:
+    if args.wiki_cmd == "init":
+        for sub in ("topics", "entities", "summaries"):
+            (ws.wiki / sub).mkdir(parents=True, exist_ok=True)
+        created = []
+        if not (ws.wiki / "index.md").exists():
+            (ws.wiki / "index.md").write_text(WIKI_INDEX.format(name=ws.root.name))
+            created.append("wiki/index.md")
+        if not (ws.wiki / "log.md").exists():
+            (ws.wiki / "log.md").write_text(WIKI_LOG)
+            created.append("wiki/log.md")
+        print("created: " + (", ".join(created) if created else "nothing (wiki already initialized)"))
+        return 0
+    if args.wiki_cmd == "log":
+        path = ws.wiki / "log.md"
+        if not path.exists():
+            ws.wiki.mkdir(parents=True, exist_ok=True)
+            path.write_text(WIKI_LOG)
+        with path.open("a") as fh:
+            fh.write(f"\n## [{dt.date.today().isoformat()}] {args.message}\n")
+            if args.detail:
+                fh.write(f"{args.detail}\n")
+        print(f"logged: {args.message}")
+        return 0
+    if args.wiki_cmd == "lint":
+        report = wiki.lint(ws, mf.load(ws))
+        if args.json:
+            _print_json(report)
+            return 0 if wiki.lint_ok(report) else 1
+        print(f"{report['pages']} pages")
+        for key, items in report.items():
+            if not isinstance(items, list) or not items:
+                continue
+            print(f"\n{key.replace('_', ' ')} ({len(items)}):")
+            for it in items:
+                print("  - " + (it if isinstance(it, str) else ", ".join(f"{k}={v}" for k, v in it.items())))
+        ok = wiki.lint_ok(report)
+        print("\nOK" if ok else "\nissues found")
+        return 0 if ok else 1
+    return 2
+
+
+def cmd_render(ws: Workspace, args) -> int:
+    rc = 0
+    for p in args.files:
+        path = Path(p)
+        if not path.is_absolute() and not path.exists():
+            path = ws.root / p
+        try:
+            md, html = rendering.render(path)
+            print(f"rendered {path.name} -> {md.name}, {html.name}")
+        except (rendering.StudyFormatError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+# --- entry -----------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(prog="eztudy", description=__doc__)
+    ap.add_argument("-C", "--root", help="notebook dir (default: nearest ancestor with sources/, or $EZTUDY_ROOT)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("status", help="what changed in sources/, index + wiki health")
+    s.add_argument("--json", action="store_true")
+
+    s = sub.add_parser("sync", help="extract new/changed sources to text; track moves/deletes")
+    s.add_argument("--force", action="store_true", help="re-extract everything")
+
+    s = sub.add_parser("index", help="sync, then chunk + embed into the SQLite vector index")
+    s.add_argument("--rebuild", action="store_true", help="drop and rebuild the whole index")
+
+    s = sub.add_parser("search", help="hybrid (vector + keyword) search over chunks")
+    s.add_argument("query")
+    s.add_argument("-k", type=int, default=8)
+    s.add_argument("--mode", choices=["hybrid", "vector", "fts"], default="hybrid")
+    s.add_argument("--path", help="only sources whose path starts with this prefix")
+    s.add_argument("--full", action="store_true", help="don't truncate chunk text")
+    s.add_argument("--json", action="store_true")
+
+    s = sub.add_parser("show", help="print a chunk (by id) or a source's extracted text (by path)")
+    s.add_argument("target", help="chunk id like 3fa9c2d1:12, or a source path / unique substring")
+    s.add_argument("--context", type=int, default=0, help="neighbouring chunks to include")
+    s.add_argument("--pages", help="for PDFs/PPTX: page or slide range, e.g. 3-5")
+
+    s = sub.add_parser("sources", help="list tracked sources")
+    s.add_argument("--json", action="store_true")
+
+    s = sub.add_parser("wiki", help="wiki-mode helpers")
+    wsub = s.add_subparsers(dest="wiki_cmd", required=True)
+    wsub.add_parser("init", help="create wiki/index.md, wiki/log.md and folders")
+    w = wsub.add_parser("lint", help="check links, orphans, index coverage, citations")
+    w.add_argument("--json", action="store_true")
+    w = wsub.add_parser("log", help="append an entry to wiki/log.md")
+    w.add_argument("message")
+    w.add_argument("--detail")
+
+    s = sub.add_parser("render", help="validate study JSON and write .md + interactive .html next to it")
+    s.add_argument("files", nargs="+")
+    return ap
+
+
+COMMANDS = {
+    "status": cmd_status, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
+    "show": cmd_show, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        ws = find_workspace(args.root)
+    except WorkspaceError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    return COMMANDS[args.cmd](ws, args) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

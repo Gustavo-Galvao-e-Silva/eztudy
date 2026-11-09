@@ -1,0 +1,21 @@
+{
+  "name": "eztudy",
+  "version": "0.1.0",
+  "description": "Local, open-source NotebookLM: drop files in sources/ and agents build a wiki + SQLite vector index, answer with citations, and generate quizzes, flashcards and study guides.",
+  "author": {
+    "name": "Gustavo Galvão"
+  },
+  "license": "MIT",
+  "keywords": [
+    "study",
+    "notebooklm",
+    "rag",
+    "wiki",
+    "flashcards",
+    "quiz",
+    "sqlite-vec",
+    "embeddings"
+  ],
+  "homepage": "https://github.com/Gustavo-Galvao-e-Silva/eztudy",
+  "repository": "https://github.com/Gustavo-Galvao-e-Silva/eztudy"
+}
