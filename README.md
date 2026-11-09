@@ -62,7 +62,7 @@ eztudy show <chunk-id|path> [--context N] [--pages 3-5] [--lines 10-40|--symbol 
 eztudy sources                    list tracked sources
 eztudy coverage topics.md         syllabus topics -> covered / partial / missing
 eztudy wiki init|lint [--fix]|log|cite
-eztudy render study/quizzes/x.json
+eztudy render study/quizzes/x.json [--theme editorial]   (skins: focus, editorial, terminal, system7, typewriter)
 ```
 
 ## Layout of a notebook

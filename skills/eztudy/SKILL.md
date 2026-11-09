@@ -35,7 +35,8 @@ eztudy sources [--json]            # list tracked sources with hash, size, title
 eztudy coverage topics.md [--out wiki/coverage.md] [--json]   # syllabus list -> covered / partial / missing per topic
 eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
 eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
-eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and interactive x.html;
+eztudy render study/quizzes/x.json [...] [--strict] [--theme focus|editorial|terminal|system7|typewriter]
+                                   # validate + write x.md and an offline, click-only x.html player;
                                    # warns on citation cids not in the index (--strict: exit 1)
 ```
 

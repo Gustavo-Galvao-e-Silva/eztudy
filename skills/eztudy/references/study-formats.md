@@ -52,7 +52,7 @@ also accepted.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
 - Multi-line `answer` / `explanation` text keeps its line breaks; wrap code in ```` ``` ```` fences for
   a monospace block (unfenced multi-line code is detected too).
-- Player: clicking an option (or A–E / 1–9, T/F) only selects it; **Confirm** or Enter grades it.
+- Player (click-only, no keyboard shortcuts): clicking an option only selects it; **Confirm** grades it.
   Set top-level `"instant_feedback": true` to grade single-answer items on click instead.
 
 ## Flashcards — `study/flashcards/<slug>.json`
@@ -69,7 +69,19 @@ also accepted.
 ```
 - One fact per card (minimum information principle). Back ≤ ~40 words.
 - Mix directions: term→definition, question→answer, cause→effect, cloze (`front: "ATP is made by ___"`).
-- `tags` drive the deck filter in the player — use topic names.
+- `tags` drive the deck filter in the player's ⋯ menu — use topic names.
+- Player: tap the card to flip it; ‹ / › move between cards; ✗ "Still learning" / ✓ "Know it" mark
+  the current card (marks are remembered per browser).
+
+## Player skins
+The `.html` player has five skins on the same layout: `focus` (default), `editorial`, `terminal`,
+`system7`, `typewriter`. Each has light and dark. Viewers switch skin and light/dark from the ⋯ menu,
+and their choice is remembered. Set the default with `eztudy render x.json --theme editorial`, or for the
+whole notebook in `.eztudy/config.toml`:
+```toml
+[ui]
+theme = "editorial"
+```
 
 ## Markdown kinds (`study/guides/<slug>.md` unless noted)
 All start with `# Title`, a one-line scope (which sources), and end with a `## Sources` list.
