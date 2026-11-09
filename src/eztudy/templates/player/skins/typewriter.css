@@ -1,19 +1,27 @@
-/* Typewriter: questions typed on ruled index cards. Signature: the CORRECT / MISSED rubber stamp.
+/* Typewriter: a writing desk. Questions are typed on ruled index cards taped to the desk, topics are
+   label-maker tape, buttons are typewriter keys, citations are library call slips and results come
+   back on a date-due card. Signature: the inky CORRECT / MISSED rubber stamp.
    Cards stay dimmed cream at night; only the desk around them goes dark. */
 [data-skin="typewriter"] {
   --bg: #EFE7D8; --surface: #FBF7EE; --sunk: #F2EADB; --fg: #2A2520; --muted: #6B6158;
   --line: #D9CDB8; --line-strong: #6B6158; --accent: #D97757; --accent-ink: #9C4930; --sel: #F5E3D8;
   --good: #2F6B45; --on-good: #FFFFFF; --bad: #A84B2C; --on-bad: #FFFFFF; --btn: #2A2520; --on-btn: #FBF7EE;
   --rule-blue: #BCD3E3; --rule-red: #D9A1A1;
+  --desk-1: #EAE0CC; --desk-2: #E2D5BD; --lamp: rgba(255, 250, 238, .85);
+  --key-edge: #0F0D0B; --tape: rgba(236, 224, 192, .82); --tape-edge: rgba(150, 125, 80, .25);
   --f-type: "American Typewriter", "Courier New", Courier, ui-monospace, monospace;
+  --f-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   --f-ui: var(--f-type); --f-read: var(--f-type);
   --f-display: var(--f-type);
   --r: 3px; --r-card: 3px;
+  --ml: 40px;  /* red margin line on the cards */
 }
 [data-skin="typewriter"][data-mode="dark"] {
   --bg: #1E1A17; --surface: #2B2521; --sunk: #332C27; --fg: #E8DFCF; --muted: #A89C8C;
   --line: #3E3630; --line-strong: #A89C8C; --accent: #D97757; --accent-ink: #E08A6A; --sel: #3E2E26;
   --good: #7DB892; --on-good: #1E1A17; --bad: #E8957A; --on-bad: #1E1A17; --btn: #E8DFCF; --on-btn: #1E1A17;
+  --desk-1: #231E1A; --desk-2: #1A1613; --lamp: rgba(255, 190, 120, .12);
+  --key-edge: #8C7F6C; --tape: rgba(214, 196, 150, .55); --tape-edge: rgba(0, 0, 0, .3);
 }
 /* The card keeps paper colours in both themes. */
 [data-skin="typewriter"][data-mode="dark"] .qbox,
@@ -22,26 +30,214 @@
   --accent-ink: #93412A; --sel: #E9D3C4; --good: #2A6140; --on-good: #FFFFFF; --bad: #93412A; --on-bad: #FFFFFF;
   --btn: #2A2520; --on-btn: #EDE4D2; --rule-blue: #A9C1D2; --rule-red: #CC8E8E;
 }
-[data-skin="typewriter"] .qbox, [data-skin="typewriter"] .fc-face {
-  color: var(--fg); padding: 18px 22px 22px; border-radius: var(--r-card); border: 0;
-  background-color: var(--surface);
-  background-image: linear-gradient(var(--rule-red), var(--rule-red)), repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule-blue) 27px 28px);
-  background-size: 100% 2px, 100% calc(100% - 54px); background-repeat: no-repeat; background-position: 0 52px, 0 54px;
-  box-shadow: 0 1px 1px rgba(60, 40, 20, .18), 0 10px 24px -8px rgba(60, 40, 20, .25);
+/* The date-due card on the results screen is paper too. */
+[data-skin="typewriter"][data-mode="dark"] .col:has(> .score) {
+  --surface: #EDE4D2; --sunk: #E1D6C0; --fg: #2A2520; --muted: #5F564E; --line: #CFC2AA; --line-strong: #5F564E;
+  --accent-ink: #93412A; --sel: #E9D3C4; --good: #2A6140; --on-good: #FFFFFF; --bad: #93412A; --on-bad: #FFFFFF;
+  --btn: #2A2520; --on-btn: #EDE4D2; --rule-blue: #A9C1D2; --rule-red: #CC8E8E; --key-edge: #0F0D0B;
 }
-[data-skin="typewriter"] .qbox .meta { min-height: 30px; text-transform: uppercase; letter-spacing: .1em; }
+
+/* ---------- the desk ---------- */
+[data-skin="typewriter"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 55% at 50% -10%, var(--lamp), transparent 70%),
+    repeating-linear-gradient(93deg, transparent 0 22px, rgba(120, 90, 50, .035) 22px 23px, transparent 23px 61px),
+    linear-gradient(180deg, var(--desk-1), var(--desk-2));
+  background-attachment: fixed;
+}
+[data-skin="typewriter"] .bar { background: transparent; border-bottom: 2px solid var(--line); backdrop-filter: blur(4px); }
+[data-skin="typewriter"] .brand b { letter-spacing: .04em; text-shadow: .4px .3px 0 rgba(42, 37, 32, .25); }
+/* ribbon spool: half black, half red, like a two-colour typewriter ribbon */
+[data-skin="typewriter"] .brand-mark {
+  display: inline-block; align-self: center; width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle, var(--bg) 0 2.5px, transparent 3px), conic-gradient(#2A2520 0 50%, #B0392B 50% 100%);
+  box-shadow: 0 0 0 1.5px var(--fg);
+}
+
+/* ---------- typewriter keys ---------- */
+[data-skin="typewriter"] .btn, [data-skin="typewriter"] .iconbtn, [data-skin="typewriter"] .arrow {
+  text-transform: uppercase; letter-spacing: .08em;
+  border: 0; box-shadow: 0 3px 0 var(--key-edge), 0 4px 6px -2px rgba(0, 0, 0, .3);
+  transition: transform 60ms, box-shadow 60ms;
+}
+[data-skin="typewriter"] .btn { border-radius: 9px; padding: 0 20px; }
+[data-skin="typewriter"] .btn.ghost { box-shadow: inset 0 0 0 1.5px var(--fg), 0 3px 0 var(--key-edge); }
+[data-skin="typewriter"] .iconbtn { background: var(--btn); color: var(--on-btn); border-radius: 50%; }
+[data-skin="typewriter"] .iconbtn:hover { background: var(--btn); filter: brightness(1.15); }
+[data-skin="typewriter"] .arrow {
+  background: radial-gradient(circle at 50% 35%, #4A423B, #2A2520 70%); color: #FBF7EE;
+  box-shadow: 0 0 0 3px #B9AD98, 0 0 0 4px #6B6158, 0 4px 0 4px #0F0D0B;
+}
+[data-skin="typewriter"] .arrow:hover:not(:disabled) { background: radial-gradient(circle at 50% 35%, #5A5149, #2A2520 70%); }
+[data-skin="typewriter"] .btn:active:not(:disabled), [data-skin="typewriter"] .iconbtn:active,
+[data-skin="typewriter"] .arrow:active:not(:disabled) { transform: translateY(2px); }
+
+/* ---------- the index card ---------- */
+[data-skin="typewriter"] .qbox, [data-skin="typewriter"] .fc-face {
+  position: relative; color: var(--fg); padding: 22px 22px 24px calc(var(--ml) + 14px); border-radius: var(--r-card); border: 0;
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(90deg, transparent var(--ml), var(--rule-red) var(--ml) calc(var(--ml) + 1.5px), transparent calc(var(--ml) + 1.5px)),
+    linear-gradient(var(--rule-red), var(--rule-red)),
+    repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule-blue) 27px 28px),
+    radial-gradient(circle at 15% 20%, rgba(150, 110, 60, .05), transparent 40%),
+    radial-gradient(circle at 85% 75%, rgba(150, 110, 60, .06), transparent 45%);
+  background-size: 100% 100%, 100% 2px, 100% calc(100% - 58px), 100% 100%, 100% 100%;
+  background-repeat: no-repeat; background-position: 0 0, 0 56px, 0 58px, 0 0, 0 0;
+  box-shadow: 0 1px 1px rgba(60, 40, 20, .2), 0 14px 28px -10px rgba(60, 40, 20, .35);
+}
+[data-skin="typewriter"][data-mode="dark"] .qbox, [data-skin="typewriter"][data-mode="dark"] .fc-face {
+  box-shadow: 0 1px 1px rgba(0, 0, 0, .5), 0 18px 36px -10px rgba(0, 0, 0, .75);
+}
+/* a strip of masking tape holding the card to the desk */
+[data-skin="typewriter"] .qbox::before {
+  content: ""; position: absolute; top: -13px; left: 50%; width: 112px; height: 26px; transform: translateX(-50%) rotate(-2.5deg);
+  background: var(--tape); box-shadow: 0 1px 2px var(--tape-edge);
+  clip-path: polygon(2% 0, 98% 4%, 100% 30%, 97% 52%, 100% 78%, 97% 100%, 3% 96%, 0 70%, 3% 45%, 0 20%);
+}
+
+/* label-maker tape for topic / difficulty */
+[data-skin="typewriter"] .qbox .meta { min-height: 30px; gap: 8px; align-items: center; }
+[data-skin="typewriter"] .qbox .meta span {
+  display: inline-block; padding: 3px 9px 2px; font: 700 .7rem/1.3 var(--f-ui); letter-spacing: .18em; text-transform: uppercase;
+  color: #F4EFE6; background: #24201C; border-radius: 2px; text-shadow: 0 1px 0 rgba(0, 0, 0, .6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 1px 1px rgba(0, 0, 0, .25);
+}
+[data-skin="typewriter"] .qbox .meta span:first-child { background: #9E2B25; transform: rotate(-1.2deg); }
+[data-skin="typewriter"] .qbox .meta span:nth-child(2) { transform: rotate(.8deg); }
+
+/* inked, slightly uneven type */
+[data-skin="typewriter"] .q, [data-skin="typewriter"] .fc-face.front .body {
+  text-shadow: .5px .3px 0 rgba(42, 37, 32, .28), -.2px 0 .4px rgba(42, 37, 32, .2);
+}
+[data-skin="typewriter"] .hint { font-style: italic; }
+
+/* options: boxes ticked by hand with a typed X */
 [data-skin="typewriter"] .opt { background: transparent; border-color: transparent; }
 [data-skin="typewriter"] .opt:hover:not(:disabled) { background: var(--sel); }
+[data-skin="typewriter"] .opt[aria-checked="true"] { background: transparent; box-shadow: none; border-color: transparent; }
+[data-skin="typewriter"] .opt .mark, [data-skin="typewriter"] .opt.multi .mark {
+  width: 20px; height: 20px; border: 1.6px solid var(--fg); border-radius: 2px 4px 3px 2px; transform: rotate(-2deg); background: var(--surface);
+}
+[data-skin="typewriter"] .opt .mark::after {
+  content: "X"; width: auto; height: auto; background: none; border-radius: 0;
+  font: 700 1.35rem/1 var(--f-type); color: var(--accent-ink); transform: scale(0) rotate(6deg);
+  text-shadow: .6px .4px 0 rgba(0, 0, 0, .25);
+}
+[data-skin="typewriter"] .opt[aria-checked="true"] .mark::after { transform: scale(1) rotate(6deg); }
+[data-skin="typewriter"] .opt.is-right .mark::after { content: "✓"; color: var(--good); transform: scale(1) rotate(-4deg); }
+[data-skin="typewriter"] .opt.is-wrong .mark::after { color: var(--bad); }
+[data-skin="typewriter"] .opt.is-right, [data-skin="typewriter"] .opt.is-wrong { background: transparent; border-style: dashed; box-shadow: none; }
 [data-skin="typewriter"] .opt.is-wrong .txt { text-decoration: line-through 2px var(--bad); }
-[data-skin="typewriter"] .expl { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 1.04rem; }
-[data-skin="typewriter"] .fb { position: relative; }
-[data-skin="typewriter"] .fb .verdict { min-height: 2.2rem; padding-right: 8.5rem; }
+[data-skin="typewriter"] .flag { border-radius: 2px; transform: rotate(-2deg); letter-spacing: .06em; text-transform: uppercase; font-size: .66rem; }
+
+/* typing into the card */
+[data-skin="typewriter"] textarea.answer {
+  background: repeating-linear-gradient(to bottom, transparent 0 calc(1.55em - 1px), var(--rule-blue) calc(1.55em - 1px) 1.55em) local, transparent;
+  border: 1.5px dashed var(--line-strong); line-height: 1.55em; padding-top: 0;
+}
+
+/* ---------- feedback ---------- */
+[data-skin="typewriter"] .fb { position: relative; border-top: 1px dashed var(--rule-red); }
+[data-skin="typewriter"] .fb .verdict { min-height: 2.4rem; padding-right: 9.5rem; }
+[data-skin="typewriter"] .verdict .badge { display: none; }
+[data-skin="typewriter"] .expl { font-family: var(--f-serif); font-size: 1.04rem; }
+[data-skin="typewriter"] .label { font-family: var(--f-ui); letter-spacing: .14em; }
+
+/* the rubber stamp: thick, inky, a little worn */
 [data-skin="typewriter"] .stamp {
-  display: block; position: absolute; top: 12px; right: 4px; padding: 6px 12px 4px;
-  font: 400 1.3rem/1 var(--f-type); letter-spacing: .12em; text-transform: uppercase;
-  border: 3px double currentColor; border-radius: 6px; transform: rotate(-8deg); animation: stamp .42s cubic-bezier(.2, .9, .3, 1.2) both;
+  display: block; position: absolute; top: 10px; right: 2px; padding: 7px 14px 5px;
+  font: 700 1.45rem/1 var(--f-type); letter-spacing: .14em; text-transform: uppercase;
+  border: 4px double currentColor; border-radius: 7px; outline: 2px solid currentColor; outline-offset: 3px;
+  transform: rotate(-9deg); mix-blend-mode: multiply; opacity: .9;
+  text-shadow: 0 0 1px currentColor, .5px .5px 0 currentColor;
+  animation: stamp .42s cubic-bezier(.2, .9, .3, 1.2) both;
+}
+[data-skin="typewriter"] .stamp::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 9px; pointer-events: none;
+  background-image:
+    radial-gradient(circle, var(--surface) 0 .8px, transparent 1.2px),
+    radial-gradient(circle, var(--surface) 0 1px, transparent 1.5px),
+    radial-gradient(circle, var(--surface) 0 .6px, transparent 1px);
+  background-size: 7px 9px, 13px 8px, 5px 6px; background-position: 0 0, 4px 3px, 2px 5px; opacity: .7;
 }
 [data-skin="typewriter"] .stamp.ok { color: var(--good); }
 [data-skin="typewriter"] .stamp.bad { color: var(--bad); }
-[data-skin="typewriter"] .verdict .badge { display: none; }
-@keyframes stamp { from { transform: rotate(-8deg) scale(1.6); opacity: 0; } to { transform: rotate(-8deg) scale(1); opacity: 1; } }
+@keyframes stamp { from { transform: rotate(-9deg) scale(1.7); opacity: 0; } 70% { transform: rotate(-9deg) scale(.96); opacity: .95; } to { transform: rotate(-9deg) scale(1); opacity: .9; } }
+
+/* citations: library call-number slips */
+[data-skin="typewriter"] .cites { gap: 10px; }
+[data-skin="typewriter"] .cite {
+  font-family: var(--f-ui); border: 1px solid var(--line-strong); border-left: 4px solid var(--rule-red); border-radius: 1px;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box; padding: 5px 10px 4px 8px;
+  box-shadow: 1px 2px 0 rgba(60, 40, 20, .12);
+}
+[data-skin="typewriter"] .cite:nth-child(odd) { transform: rotate(-.8deg); }
+[data-skin="typewriter"] .cite:nth-child(even) { transform: rotate(.7deg); }
+[data-skin="typewriter"] .cite .n { display: inline; font-weight: 700; color: var(--accent-ink); letter-spacing: .06em; }
+[data-skin="typewriter"] .cite .n::before { content: "No. "; }
+
+[data-skin="typewriter"] pre.code {
+  background: var(--sunk); border: 1px solid var(--line); border-left: 3px double var(--line-strong); border-radius: 1px;
+}
+
+/* ---------- progress ---------- */
+[data-skin="typewriter"] .dot { border-radius: 2px; border-color: var(--fg); }
+[data-skin="typewriter"] .dot.cur { border-radius: 2px; border-color: var(--accent-ink); background: repeating-linear-gradient(135deg, var(--accent-ink) 0 2px, transparent 2px 4px); }
+
+/* ---------- results: a library date-due card ---------- */
+[data-skin="typewriter"] .col:has(> .score) {
+  position: relative; color: var(--fg); padding: 28px 22px 26px calc(var(--ml) + 14px); border-radius: var(--r-card);
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(90deg, transparent var(--ml), var(--rule-red) var(--ml) calc(var(--ml) + 1.5px), transparent calc(var(--ml) + 1.5px)),
+    repeating-linear-gradient(to bottom, transparent 0 27px, var(--rule-blue) 27px 28px);
+  box-shadow: 0 1px 1px rgba(60, 40, 20, .2), 0 14px 28px -10px rgba(60, 40, 20, .35);
+}
+[data-skin="typewriter"] .col:has(> .score)::before {
+  content: "DATE DUE"; position: absolute; top: 8px; left: calc(var(--ml) + 14px);
+  font: 700 .72rem/1 var(--f-ui); letter-spacing: .3em; color: var(--muted);
+}
+[data-skin="typewriter"] .score { align-items: center; gap: 18px 22px; }
+[data-skin="typewriter"] .score .big {
+  color: var(--accent-ink); font-size: 2.8rem; font-weight: 700; padding: 8px 18px 4px;
+  border: 4px double currentColor; border-radius: 8px; transform: rotate(-6deg); mix-blend-mode: multiply;
+  text-shadow: 0 0 1px currentColor;
+}
+[data-skin="typewriter"] .score .of { color: var(--muted); }
+[data-skin="typewriter"] .sect > h2 { font-family: var(--f-ui); letter-spacing: .2em; color: var(--fg); border-bottom: 2px solid var(--rule-red); padding-bottom: 4px; }
+[data-skin="typewriter"] .track { border-radius: 0; background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); height: 10px; }
+[data-skin="typewriter"] .track i { background: repeating-linear-gradient(135deg, var(--good) 0 3px, transparent 3px 5px); }
+[data-skin="typewriter"] .misses li { border-top: 1px dashed var(--rule-red); }
+[data-skin="typewriter"] .misses dt { text-transform: uppercase; letter-spacing: .1em; font-size: .75rem; }
+
+/* ---------- flashcards: punched index cards ---------- */
+[data-skin="typewriter"] .fc-face::before {
+  content: ""; position: absolute; top: 12px; left: 50%; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%;
+  background: var(--bg); box-shadow: inset 1px 1px 2px rgba(0, 0, 0, .35);
+}
+[data-skin="typewriter"] .fc-face::after {
+  content: ""; position: absolute; top: -9px; left: 22px; width: 78px; height: 12px; border-radius: 4px 4px 0 0;
+  background: #7FA8C4;
+}
+[data-skin="typewriter"] .fc-face.back::after { background: #C56A55; left: auto; right: 22px; }
+[data-skin="typewriter"] .fc-face .side { letter-spacing: .2em; }
+[data-skin="typewriter"] .fc-face.back .body { font-family: var(--f-serif); font-size: 1.08rem; }
+[data-skin="typewriter"] .tag { border-style: dashed; border-color: var(--line-strong); border-radius: 2px; text-transform: uppercase; letter-spacing: .1em; }
+[data-skin="typewriter"] .tally { font-family: var(--f-ui); letter-spacing: .1em; }
+/* the marks are ink stamps */
+[data-skin="typewriter"] .mk .ring { border: 4px double currentColor; background: transparent; transform: rotate(-6deg); }
+[data-skin="typewriter"] .mk.yes .ring { transform: rotate(5deg); }
+[data-skin="typewriter"] .mk span:last-child { text-transform: uppercase; letter-spacing: .12em; font-size: .72rem; }
+
+@media (max-width: 520px) {
+  [data-skin="typewriter"] { --ml: 22px; }
+  [data-skin="typewriter"] .qbox, [data-skin="typewriter"] .fc-face { padding-right: 16px; }
+  [data-skin="typewriter"] .fc-face { padding-left: 34px; padding-right: 34px; }
+  [data-skin="typewriter"] .fb .verdict { padding-right: 7.5rem; }
+  [data-skin="typewriter"] .stamp { font-size: 1.1rem; padding: 5px 9px 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="typewriter"] .stamp { animation: none; }
+}

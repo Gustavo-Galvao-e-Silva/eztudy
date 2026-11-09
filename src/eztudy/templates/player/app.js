@@ -152,9 +152,14 @@ function quiz(items) {
       h("h1", { class: "q", id: "qh", tabindex: "-1" }, it.question),
       h("p", { class: "hint" }, typeLabel + (multi ? ". Graded as an exact set." : "")));
 
-    const actions = h("div", { class: "actions" });
-    const next = h("button", { type: "button", class: "btn", onclick: advance },
-      pos + 1 < order.length ? "Next" : "See results");
+    // Every question gets Back / Next. Next is the primary action once the question is answered.
+    const allGraded = order.every(q => states[q] && states[q].graded);
+    const back = h("button", { type: "button", class: "btn ghost nav-back", disabled: pos === 0, "aria-label": "Previous question",
+      onclick: () => goTo(pos - 1) }, ICON.left(), "Back");
+    const next = h("button", { type: "button", class: "btn nav-next" + (st.graded ? "" : " ghost"), onclick: forward,
+      "aria-label": pos + 1 < order.length ? "Next question" : allGraded ? "See results" : "Go to the first unanswered question" },
+      pos + 1 < order.length || !allGraded ? "Next" : "See results", ICON.right());
+    const actions = h("div", { class: "actions" }, back, h("span", { class: "spacer" }));
 
     if (it.type === "short") {
       const ta = h("textarea", { class: "answer", spellcheck: "false", placeholder: "Type your answer, then reveal the model answer…",
@@ -162,17 +167,17 @@ function quiz(items) {
       ta.value = st.draft;
       box.append(ta);
       if (!st.revealed) {
-        actions.append(h("span", { class: "spacer" }), h("button", { type: "button", class: "btn",
-          onclick: () => { st.revealed = true; render(); say("Model answer shown. Grade yourself."); } }, "Reveal answer"));
+        actions.append(h("button", { type: "button", class: "btn",
+          onclick: () => { st.revealed = true; render(); say("Model answer shown. Grade yourself."); } }, "Reveal answer"), next);
       } else {
         const fb = h("div", { class: "fb" });
         if (st.graded) fb.append(...verdict(st.ok, it, true));
         fb.append(h("p", { class: "label" }, "Model answer"), rich(it.answer, "div"), explain(it), citeList(it));
         box.append(fb);
-        if (st.graded) actions.append(h("span", { class: "spacer" }), next);
-        else actions.append(h("span", { class: "spacer" }),
+        if (!st.graded) actions.append(
           h("button", { type: "button", class: "btn ghost", onclick: () => grade(qi, false) }, "I missed it"),
           h("button", { type: "button", class: "btn", onclick: () => grade(qi, true) }, "I got it"));
+        actions.append(next);
       }
       box.append(actions);
       stage.append(...progress(), box);
@@ -194,11 +199,11 @@ function quiz(items) {
     box.append(list);
     if (st.graded) {
       box.append(h("div", { class: "fb" }, ...verdict(st.ok, it), explain(it), citeList(it)));
-      actions.append(h("span", { class: "spacer" }), next);
     } else if (!(instant && !multi)) {
-      actions.append(h("span", { class: "spacer" }), h("button", { type: "button", class: "btn", id: "confirm", disabled: !st.sel.size,
+      actions.append(h("button", { type: "button", class: "btn", id: "confirm", disabled: !st.sel.size,
         onclick: () => confirmAnswer(qi) }, "Confirm"));
     }
+    actions.append(next);
     box.append(actions);
     stage.append(...progress(), box);
   }
@@ -235,12 +240,16 @@ function quiz(items) {
     render();
     say(ok ? "Correct." : "Not quite.");
   }
-  function advance() {
-    const nextUngraded = order.findIndex((qi, p) => p > pos && !(states[qi] && states[qi].graded));
-    const firstUngraded = order.findIndex(qi => !(states[qi] && states[qi].graded));
-    pos = nextUngraded >= 0 ? nextUngraded : firstUngraded >= 0 ? firstUngraded : order.length;
+  function goTo(p) {
+    pos = Math.max(0, Math.min(p, order.length));
     render();
     window.scrollTo({ top: 0 });
+  }
+  function forward() {
+    if (pos + 1 < order.length) return goTo(pos + 1);
+    // On the last question: results if everything is answered, else the first question still open.
+    const firstOpen = order.findIndex(qi => !(states[qi] && states[qi].graded));
+    goTo(firstOpen >= 0 ? firstOpen : order.length);
   }
 
   function summary() {

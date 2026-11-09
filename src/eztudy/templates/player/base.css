@@ -136,6 +136,9 @@ textarea.answer:disabled { opacity: .85; }
   font-weight: 600; font-size: .875rem; transition: opacity var(--fast), background var(--fast);
 }
 .btn:disabled { opacity: .45; }
+.btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nav-back { padding-left: 10px; }
+.nav-next { padding-right: 10px; }
 .btn.ghost { background: var(--surface); color: var(--fg); border-color: var(--line-strong); }
 .btn.ghost:hover:not(:disabled) { background: var(--sunk); }
 

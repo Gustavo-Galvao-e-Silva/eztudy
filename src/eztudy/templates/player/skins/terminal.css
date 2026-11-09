@@ -1,4 +1,6 @@
-/* Terminal: monospace on cream paper. Signature: an ASCII progress bar and prompt-style verdicts. */
+/* Terminal: monospace on cream paper, like a well-loved shell session.
+   Signature: a shell prompt, a blinking block cursor, [A]-style option keys, framed "windows",
+   an ASCII progress bar and prompt-style verdicts. Glow only on accents, only at night. */
 [data-skin="terminal"] {
   --bg: #F5EFE3; --surface: #FBF7EE; --sunk: #EFE7D8; --fg: #2B2520; --muted: #6B5F54;
   --line: #E2D8C6; --line-strong: #6B5F54; --accent: #D97757; --accent-ink: #A84B2A; --sel: #F6E4D9;
@@ -6,20 +8,160 @@
   --f-ui: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
   --f-read: var(--f-ui); --f-display: var(--f-ui);
   --r: 3px; --r-card: 4px;
+  --glow: none;
 }
 [data-skin="terminal"][data-mode="dark"] {
   --bg: #1E1A16; --surface: #27221D; --sunk: #2E2822; --fg: #EDE4D3; --muted: #A89A87;
   --line: #3A332C; --line-strong: #8A7D6C; --accent: #E8916F; --accent-ink: #F0A584; --sel: #3A2A22;
   --good: #9CC48C; --on-good: #1E1A16; --bad: #EE8A78; --on-bad: #1E1A16; --btn: #F0A584; --on-btn: #1E1A16;
+  --glow: 0 0 5px rgba(232, 145, 111, .4);
 }
 [data-skin="terminal"] body { font-size: .9375rem; }
-[data-skin="terminal"] .q { font-size: 1.05rem; font-weight: 500; line-height: 1.55; }
+[data-skin="terminal"] .mono, [data-skin="terminal"] body { font-variant-ligatures: none; }
+
+/* ---------- top bar: a shell prompt ---------- */
+[data-skin="terminal"] .brand b::before { content: "eztudy:~$ "; color: var(--accent-ink); font-weight: 700; }
+[data-skin="terminal"] .brand .desc::before { content: "# "; }
+[data-skin="terminal"] .brand .desc:empty { display: none; }
+[data-skin="terminal"] .count::before { content: "["; }
+[data-skin="terminal"] .count::after { content: "]"; }
+[data-skin="terminal"] .iconbtn { border-radius: var(--r); }
+[data-skin="terminal"] .menu { border-radius: var(--r-card); border-color: var(--line-strong); }
+[data-skin="terminal"] .menu h2::before { content: "## "; color: var(--accent-ink); }
+[data-skin="terminal"] .choice[aria-pressed="true"]::before { content: ">"; color: var(--accent-ink); font-weight: 700; margin-right: -4px; }
+
+/* ---------- progress ---------- */
 [data-skin="terminal"] .dots { display: none; }
 [data-skin="terminal"] .ascii { display: block; margin: 0; text-align: center; white-space: pre; font-size: .8125rem; color: var(--muted); }
-[data-skin="terminal"] .ascii b { color: var(--accent-ink); font-weight: 400; }
+[data-skin="terminal"] .ascii::before { content: "progress "; }
+[data-skin="terminal"] .ascii b { color: var(--accent-ink); font-weight: 400; text-shadow: var(--glow); }
+
+/* ---------- the question lives in a framed "window" with a label in its top border ---------- */
+[data-skin="terminal"] .qbox {
+  position: relative; padding: 22px clamp(14px, 4vw, 24px) 18px;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-card);
+  box-shadow: 4px 4px 0 var(--line);
+}
+[data-skin="terminal"] .qbox::before {
+  content: "┤ quiz.run ├"; position: absolute; top: -.75em; left: 14px; padding: 0 4px;
+  background: var(--bg); color: var(--muted); font-size: .75rem; line-height: 1.5;
+}
+[data-skin="terminal"] .meta span::before { content: "["; color: var(--muted); }
+[data-skin="terminal"] .meta span::after { content: "]"; color: var(--muted); }
+[data-skin="terminal"] .meta { color: var(--accent-ink); letter-spacing: .04em; }
+[data-skin="terminal"] .q { font-size: 1.05rem; font-weight: 500; line-height: 1.55; }
+[data-skin="terminal"] .q::before { content: "$ "; color: var(--accent-ink); font-weight: 700; text-shadow: var(--glow); }
+[data-skin="terminal"] .q::after {
+  content: ""; display: inline-block; width: .6em; height: 1.15em; margin-left: .3em; vertical-align: -.2em;
+  background: var(--accent); box-shadow: var(--glow); animation: tty-blink 1.1s steps(1) infinite;
+}
+@keyframes tty-blink { 50% { opacity: 0; } }
+[data-skin="terminal"] .hint::before { content: "# "; }
+[data-skin="terminal"] .hint { font-style: italic; }
+
+/* ---------- options: [A] [B] keys instead of round radios ---------- */
+[data-skin="terminal"] .opts { counter-reset: tty-opt; gap: 6px; }
+[data-skin="terminal"] .opt {
+  counter-increment: tty-opt; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px;
+  min-height: 44px; padding: 8px 10px; border-color: var(--line); border-style: dashed; background: transparent;
+}
+[data-skin="terminal"] .opt:hover:not(:disabled) { background: var(--sunk); border-style: solid; border-color: var(--line-strong); }
+[data-skin="terminal"] .opt .mark { width: auto; height: auto; border: 0; border-radius: 0; display: inline; font-weight: 700; color: var(--muted); }
+[data-skin="terminal"] .opt .mark::after { display: none; }
+[data-skin="terminal"] .opt .mark::before { content: "[" counter(tty-opt, upper-alpha) "]"; padding: 1px 2px; border-radius: 2px; }
+[data-skin="terminal"] .opt[aria-checked="true"] { border-style: solid; border-color: var(--accent-ink); background: var(--sel); box-shadow: inset 3px 0 0 var(--accent-ink); }
+[data-skin="terminal"] .opt[aria-checked="true"] .mark::before { background: var(--accent-ink); color: var(--on-btn); }
+[data-skin="terminal"] .opt.is-right { border-style: solid; box-shadow: inset 3px 0 0 var(--good); }
+[data-skin="terminal"] .opt.is-wrong { border-style: solid; box-shadow: inset 3px 0 0 var(--bad); }
+[data-skin="terminal"] .opt.is-right .mark::before { background: var(--good); color: var(--on-good); }
+[data-skin="terminal"] .opt.is-wrong .mark::before { background: var(--bad); color: var(--on-bad); }
+[data-skin="terminal"] .flag { border-radius: 2px; text-transform: lowercase; padding: 1px 7px 1px 5px; }
+[data-skin="terminal"] .flag.ok::after { content: " ok"; }
+[data-skin="terminal"] .flag.bad::after { content: " err"; }
+[data-skin="terminal"] textarea.answer { background: var(--sunk); border-style: dashed; caret-color: var(--accent); }
+
+/* ---------- buttons read like commands ---------- */
+[data-skin="terminal"] .btn { border-radius: var(--r); text-transform: lowercase; letter-spacing: .02em; }
+[data-skin="terminal"] .btn:not(.ghost)::before { content: "$"; opacity: .8; }
+[data-skin="terminal"] .btn.ghost { border-style: dashed; }
+[data-skin="terminal"] .btn.ghost::before { content: "~"; color: var(--muted); }
+
+/* ---------- feedback: printed output ---------- */
+[data-skin="terminal"] .fb { border-top: 1px dashed var(--line-strong); }
 [data-skin="terminal"] .verdict { display: none; }
 [data-skin="terminal"] .verdict-term { display: block; margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 [data-skin="terminal"] .verdict-term.ok { color: var(--good); }
 [data-skin="terminal"] .verdict-term.bad { color: var(--bad); }
+[data-skin="terminal"] .verdict-term.ok::after { content: "  [exit 0]"; color: var(--muted); font-weight: 400; text-shadow: none; }
+[data-skin="terminal"] .verdict-term.bad::after { content: "  [exit 1]"; color: var(--muted); font-weight: 400; text-shadow: none; }
 [data-skin="terminal"] .expl { color: var(--muted); }
-[data-skin="terminal"] .expl::before { content: "# "; }
+[data-skin="terminal"] .expl::before { content: "# "; color: var(--accent-ink); }
+[data-skin="terminal"] .label::before { content: "$ cat "; color: var(--accent-ink); text-transform: none; }
+[data-skin="terminal"] .label { text-transform: lowercase; letter-spacing: 0; font-size: .8125rem; }
+[data-skin="terminal"] .cites { flex-direction: column; gap: 2px; }
+[data-skin="terminal"] .cite { border: 0; background: none; padding: 0; font-size: .75rem; color: var(--muted); }
+[data-skin="terminal"] .cite::before { content: "src:"; color: var(--accent-ink); }
+[data-skin="terminal"] .cite .src { color: var(--fg); }
+[data-skin="terminal"] .cite .loc::before { content: "@ "; }
+[data-skin="terminal"] pre.code { background: var(--sunk); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 0; }
+
+/* ---------- results: a little ASCII report ---------- */
+[data-skin="terminal"] .score {
+  position: relative; padding: 20px 16px 14px; border: 1px solid var(--line-strong); border-radius: var(--r-card);
+  background: var(--surface); box-shadow: 4px 4px 0 var(--line);
+}
+[data-skin="terminal"] .score::before {
+  content: "┤ report ├"; position: absolute; top: -.75em; left: 14px; padding: 0 4px;
+  background: var(--bg); color: var(--muted); font-size: .75rem; line-height: 1.5;
+}
+[data-skin="terminal"] .score .big { font-weight: 700; font-size: 2.6rem; color: var(--accent-ink); text-shadow: var(--glow); }
+[data-skin="terminal"] .score .big::before { content: "score="; font-size: .9rem; font-weight: 400; color: var(--muted); text-shadow: none; }
+[data-skin="terminal"] .sect > h2 { text-transform: none; letter-spacing: 0; font-size: .875rem; color: var(--fg); }
+[data-skin="terminal"] .sect > h2::before { content: "## "; color: var(--accent-ink); }
+[data-skin="terminal"] .track {
+  height: 10px; border-radius: 0; box-shadow: none;
+  background: repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 8px);
+}
+[data-skin="terminal"] .track i { background: repeating-linear-gradient(90deg, var(--good) 0 6px, transparent 6px 8px); }
+[data-skin="terminal"] .misses li { border-top: 0; border-left: 2px solid var(--bad); padding: 2px 0 2px 12px; }
+[data-skin="terminal"] .misses .mq::before { content: "✗ "; color: var(--bad); }
+[data-skin="terminal"] .misses dt { text-transform: lowercase; }
+[data-skin="terminal"] .misses dt::after { content: ":"; }
+
+/* ---------- flashcards: `cat question.txt` in a terminal window ---------- */
+[data-skin="terminal"] .fc-top .dots { display: flex; }
+[data-skin="terminal"] .fc-top .dot { border-radius: 1px; }
+[data-skin="terminal"] .fc-top .dot.cur { border-radius: 1px; }
+[data-skin="terminal"] .fc-face {
+  padding: 0; gap: 0; border-radius: var(--r-card); background: var(--surface);
+  box-shadow: 4px 4px 0 var(--line);
+}
+[data-skin="terminal"] .fc-face .side {
+  padding: 8px 14px; border-bottom: 1px solid var(--line-strong); background: var(--sunk);
+  text-transform: none; letter-spacing: 0; font-size: .75rem;
+}
+[data-skin="terminal"] .fc-face .side span:first-child { text-transform: lowercase; color: var(--fg); }
+[data-skin="terminal"] .fc-face .side span:first-child::before { content: "$ cat "; color: var(--accent-ink); text-shadow: var(--glow); }
+[data-skin="terminal"] .fc-face .side span:first-child::after { content: ".txt"; }
+[data-skin="terminal"] .fc-face .body { padding: 18px 20px; }
+[data-skin="terminal"] .fc-face.front .body { font-size: 1.15rem; }
+[data-skin="terminal"] .fc-face .tags { padding: 0 20px; }
+[data-skin="terminal"] .fc-face .tag { border-radius: 2px; border-style: dashed; }
+[data-skin="terminal"] .fc-face .tag::before { content: "#"; }
+[data-skin="terminal"] .fc-face .tip { padding: 10px 20px 14px; }
+[data-skin="terminal"] .fc-face .tip::before { content: "# "; }
+[data-skin="terminal"] .fc-face .cites { padding: 0 20px 16px; }
+[data-skin="terminal"] .arrow { border-radius: var(--r); }
+[data-skin="terminal"] .mk .ring { border-radius: var(--r-card); border-style: dashed; }
+[data-skin="terminal"] .mk[aria-pressed="true"] .ring { border-style: solid; }
+[data-skin="terminal"][data-mode="dark"] .mk[aria-pressed="true"] .ring { box-shadow: 0 0 10px currentColor; }
+[data-skin="terminal"] .mk span:last-child { text-transform: lowercase; }
+
+@media (max-width: 520px) {
+  [data-skin="terminal"] .brand b::before { content: "$ "; }
+  [data-skin="terminal"] .fc-face .body { padding: 16px 30px; }
+  [data-skin="terminal"] .fc-face .side { padding: 8px 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skin="terminal"] .q::after { animation: none !important; }
+}
