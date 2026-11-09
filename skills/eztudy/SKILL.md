@@ -25,6 +25,7 @@ You (the agent) do all the bookkeeping. Everything else is created lazily:
 ```bash
 eztudy status                      # ALWAYS first: pending changes, index + wiki health
 eztudy sync                        # extract new/changed sources -> .eztudy/text, track moves/deletes
+eztudy add ../dir [--as name] [--exclude 'a,*.zip'] [--dry-run]   # copy files in from elsewhere (skips IDE/build junk, tracks origin)
 eztudy index [--rebuild]           # sync + chunk + embed into SQLite (fastembed, local)
 eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--path bio/] [--full] [--json]
 eztudy show <chunk-id> [--context 1]          # read a chunk (+ neighbours) e.g. 3fa9c2d1:12

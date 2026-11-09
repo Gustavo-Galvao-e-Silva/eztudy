@@ -54,6 +54,7 @@ The CLI is usable directly too (`bin/eztudy` in this repo):
 
 ```text
 eztudy status                     what changed; index + wiki health
+eztudy add ../dir [--as name]     copy files in, skipping IDE/build junk; status flags changed originals
 eztudy sync                       extract text, track moves/deletes
 eztudy index [--rebuild]          chunk + embed (incremental)
 eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--json]

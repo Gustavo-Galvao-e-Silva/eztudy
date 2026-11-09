@@ -23,6 +23,16 @@ chunk ids stay the same.
 - Modify file contents, convert files in place, or delete a source without explicit permission.
 - Put files outside `sources/` or in hidden folders (dot-folders are ignored by the indexer).
 
+## Bringing in files from elsewhere
+When the material lives in other folders (assignment repos, a course drive), use `eztudy add` instead of
+copying by hand: `eztudy add ../homework02 --as hw2-bst --exclude 'tests,*.csv'`. It skips IDE, build
+and archive files by default (`.idea`, `out`, `build`, `bin`, `node_modules`, `*.class`, `*.iml`, `*.zip`,
+dot-files…; `--no-default-excludes` turns that off), records each file's origin in
+`.eztudy/origins.json`, and never overwrites a different file already in `sources/`. Use `--dry-run` to
+preview. `eztudy status` reports when an original has changed since it was copied; re-run the same
+`eztudy add` to refresh those copies, then `eztudy index`. Moving or renaming the copies inside `sources/`
+keeps the origin link.
+
 ## Derived sources
 If a source can't be extracted (scanned PDF, image, audio), you may *add* a derived text file next to
 it — e.g. `lecture-03.ocr.md` or `interview.transcript.md` — and note the origin at the top. The

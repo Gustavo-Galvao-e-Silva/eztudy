@@ -12,6 +12,7 @@ from pathlib import Path
 from . import chunk as chunking
 from . import extract as extracting
 from . import manifest as mf
+from . import origins
 from . import render as rendering
 from . import vectordb, wiki
 from .workspace import Workspace, WorkspaceError, find_workspace
@@ -40,6 +41,8 @@ def sync_sources(ws: Workspace, force: bool = False, quiet: bool = False) -> dic
     for rel in diff.deleted:
         entries.pop(rel, None)
         log["deleted"].append(rel)
+
+    origins.follow_sync(ws, diff.moved, diff.deleted)
 
     todo = set(diff.new) | set(diff.changed)
     for rel in diff.unchanged:
@@ -119,6 +122,25 @@ def _docs(ws: Workspace) -> dict[str, dict]:
 # --- commands ------------------------------------------------------------------
 
 
+def cmd_add(ws: Workspace, args) -> int:
+    patterns = ([] if args.no_default_excludes else list(origins.DEFAULT_EXCLUDES)) + [p.strip() for p in (args.exclude or "").split(",") if p.strip()]
+    try:
+        log = origins.add(ws, [Path(p).expanduser() for p in args.paths], args.as_name, patterns, dry_run=args.dry_run)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    verb = "would copy" if args.dry_run else "copied"
+    for rel in log["copied"]:
+        print(f"  {verb}: {rel}")
+    for rel in log["updated"]:
+        print(f"  {'would update' if args.dry_run else 'updated'}: {rel}")
+    for c in log["conflicts"]:
+        print(f"  skipped: {c['path']} ({c['reason']})", file=sys.stderr)
+    print(f"{len(log['copied'])} new, {len(log['updated'])} updated, {len(log['unchanged'])} unchanged, "
+          f"{len(log['conflicts'])} skipped" + ("" if args.dry_run else " -> run `eztudy index`"))
+    return 1 if log["conflicts"] else 0
+
+
 def cmd_status(ws: Workspace, args) -> int:
     data = mf.load(ws)
     diff = mf.scan(ws, data)
@@ -136,6 +158,7 @@ def cmd_status(ws: Workspace, args) -> int:
         vec["unindexed"] = sorted(d["path"] for h, d in docs.items() if h not in indexed)
         vec["orphaned"] = sorted(p for h, p in indexed.items() if h not in docs)
     report = wiki.lint(ws, data)
+    origin_changes = origins.changed(ws)
     status = {
         "root": str(ws.root),
         "sources": {"tracked": len(entries), **by_status},
@@ -146,6 +169,7 @@ def cmd_status(ws: Workspace, args) -> int:
             "uncovered_sources": report["uncovered_sources"],
             "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k not in wiki.INFO_KEYS and v},
         },
+        "origins_changed": origin_changes,
         "study": sorted(p.relative_to(ws.root).as_posix() for p in ws.study.rglob("*") if p.is_file()) if ws.study.exists() else [],
     }
     if args.json:
@@ -171,6 +195,9 @@ def cmd_status(ws: Workspace, args) -> int:
     w = status["wiki"]
     print(f"wiki:     {w['pages']} pages; {len(w['uncovered_sources'])} sources not yet cited by any page"
           + (f"; issues: {w['issues']} -> run `eztudy wiki lint`" if w["issues"] else ""))
+    for o in origin_changes:
+        what = "differs from" if o["state"] == "changed" else "was copied from (now missing)"
+        print(f"origin:   {o['path']} {what} {o['origin']}" + (" -> re-run `eztudy add`" if o["state"] == "changed" else ""))
     if status["study"]:
         print(f"study:    {len(status['study'])} files in study/")
     return 0
@@ -542,6 +569,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("status", help="what changed in sources/, index + wiki health")
     s.add_argument("--json", action="store_true")
 
+    s = sub.add_parser("add", help="copy files/folders from elsewhere into sources/, tracking their origin")
+    s.add_argument("paths", nargs="+")
+    s.add_argument("--as", dest="as_name", help="folder under sources/ to put them in (default: the folder's name)")
+    s.add_argument("--exclude", help="extra comma-separated name patterns to skip, e.g. 'tests,*.csv'")
+    s.add_argument("--dry-run", action="store_true", help="only list what would be copied")
+    s.add_argument("--no-default-excludes", action="store_true",
+                   help="don't skip IDE/build/archive files (.idea, out, build, bin, *.class, *.zip, …)")
+
     s = sub.add_parser("sync", help="extract new/changed sources to text; track moves/deletes")
     s.add_argument("--force", action="store_true", help="re-extract everything")
 
@@ -592,7 +627,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 COMMANDS = {
-    "status": cmd_status, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
+    "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
 }
 
