@@ -5,6 +5,9 @@
   --line: #D6C9B3; --line-strong: #2B2420; --accent: #D97757; --accent-ink: #9C482A; --sel: #F8D9C6;
   --good: #24653F; --on-good: #FFFFFF; --bad: #9C3024; --on-bad: #FFFFFF; --btn: #FFFBF3; --on-btn: #2B2420;
   --stripe: #9A8877; --hard: #2B2420;
+  --ed-bg: #FFFFFF; --ed-gutter: #EDE4D3; --ed-active: #F3ECDF; --ed-sel: #D9CDB8; --ed-cursor: #2B2420;
+  --syn-keyword: #000000; --syn-string: #7A3418; --syn-number: #1F1A17; --syn-comment: #5A4F46; --syn-type: #3F3A35;
+  --syn-function: #1F1A17; --syn-variable: #2B2420; --syn-operator: #2B2420; --syn-punct: #4A4038;
   --f-ui: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --f-display: "Chicago", "Charcoal", "Geneva", ui-monospace, Menlo, monospace;
   --r: 4px; --r-card: 0;
@@ -14,6 +17,9 @@
   --line: #3E3530; --line-strong: #A99C8D; --accent: #E58B6B; --accent-ink: #F0A688; --sel: #5A3A2E;
   --good: #8FD3AC; --on-good: #1F1A17; --bad: #F2A093; --on-bad: #1F1A17; --btn: #2C2622; --on-btn: #F3EBDD;
   --stripe: #6E6158; --hard: #0E0B09;
+  --ed-bg: #14110F; --ed-gutter: #2C2622; --ed-active: #26201C; --ed-sel: #4C4036; --ed-cursor: #F3EBDD;
+  --syn-keyword: #FFFFFF; --syn-string: #F0A688; --syn-number: #F3EBDD; --syn-comment: #C2B5A6; --syn-type: #E2D8C8;
+  --syn-function: #F3EBDD; --syn-variable: #F3EBDD; --syn-operator: #F3EBDD; --syn-punct: #D4C8B8;
 }
 [data-skin="system7"] .win { background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 4px 4px 0 var(--hard); }
 [data-skin="system7"] .win-title {
@@ -31,3 +37,26 @@
 [data-skin="system7"] .btn:not(.ghost) { box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px var(--line-strong); margin: 5px; }
 [data-skin="system7"] .btn:not(.ghost):disabled { box-shadow: 0 0 0 2px var(--surface), 0 0 0 5px var(--line); }
 [data-skin="system7"] .fc-face { box-shadow: 3px 3px 0 var(--hard); }
+
+/* code editor: a sunken Mac text field with a classic menu for completions */
+[data-skin="system7"] .cm-editor.ez-editor {
+  border-radius: 0; border: 1px solid var(--line-strong); box-shadow: inset 1px 1px 0 var(--line-strong), inset -1px -1px 0 var(--line);
+}
+[data-skin="system7"] .cm-editor.ez-editor.cm-focused { outline: 1px solid var(--line-strong) !important; outline-offset: 2px; }
+[data-skin="system7"] .cm-editor.ez-editor .cm-gutters { border-right: 1px solid var(--line-strong); }
+[data-skin="system7"] .cm-editor.ez-editor .cm-content { padding-left: 2px; }
+[data-skin="system7"] .cm-editor.ez-editor .cm-cursor { border-left-width: 1px; }
+[data-skin="system7"] .cm-editor.ez-editor .cm-matchingBracket { outline-color: var(--line-strong); }
+[data-skin="system7"] .tok-keyword { font-weight: 700; }
+[data-skin="system7"] .tok-type { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+[data-skin="system7"] .tok-function { font-weight: 600; }
+[data-skin="system7"] .cm-editor .cm-tooltip { border-radius: 0; border-color: var(--line-strong) !important; box-shadow: 3px 3px 0 var(--hard); }
+[data-skin="system7"] .cm-editor .cm-tooltip.ez-complete::before { font-family: var(--f-display); font-weight: 400; letter-spacing: 0; border-bottom-color: var(--line-strong); }
+[data-skin="system7"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] { background: var(--fg) !important; color: var(--ed-bg) !important; }
+[data-skin="system7"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionMatchedText,
+[data-skin="system7"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionDetail,
+[data-skin="system7"] .cm-editor .cm-tooltip.ez-complete > ul > li[aria-selected] .cm-completionIcon { color: var(--ed-bg) !important; background: transparent; }
+[data-skin="system7"] .cm-editor .cm-completionMatchedText { color: inherit; text-decoration: underline; }
+[data-skin="system7"] .cm-editor .ez-complete .cm-completionIcon { border-radius: 0; }
+[data-skin="system7"] .cm-editor.ez-editor .cm-panels { border-top: 1px solid var(--line-strong); }
+[data-skin="system7"] .cm-editor.ez-editor .cm-vim-panel { font-family: var(--f-display); font-weight: 400; font-size: .6875rem; }

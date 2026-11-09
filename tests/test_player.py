@@ -57,6 +57,41 @@ def test_skin_contrast(skin, mode):
     assert not failures, f"{skin}/{mode}: " + "; ".join(failures)
 
 
+SYNTAX = ["syn-keyword", "syn-string", "syn-number", "syn-comment", "syn-type", "syn-function",
+          "syn-variable", "syn-operator", "syn-punct", "fg"]
+# Code editor: syntax colours must read as text on every editor background; UI marks need 3:1.
+EDITOR_PAIRS = (
+    [(fg, bg, 4.5) for fg in SYNTAX for bg in ("ed-bg", "ed-active", "ed-sel")]
+    + [("muted", "ed-gutter", 4.5), ("fg", "ed-gutter", 4.5), ("fg", "ed-active", 4.5),
+       ("ed-bg", "ed-cursor", 4.5),  # Vim's block cursor shows the character in --ed-bg
+       ("ed-cursor", "ed-bg", 3), ("accent-ink", "ed-bg", 3), ("bad", "ed-bg", 3), ("good", "ed-gutter", 3),
+       ("fg", "surface", 4.5), ("muted", "surface", 4.5), ("fg", "sel", 4.5), ("accent-ink", "surface", 4.5)]
+)
+
+
+def _editor_tokens(skin, mode):
+    """Tokens in effect inside a question card (where the editor lives), for one skin and mode."""
+    css = _skin_css(skin)
+    tokens = _tokens(css, f'[data-skin="{skin}"]')
+    if mode == "dark":
+        tokens = {**tokens, **_tokens(css, f'[data-skin="{skin}"][data-mode="dark"]')}
+        card = re.search(re.escape(f'[data-skin="{skin}"][data-mode="dark"] .qbox') + r"[^{]*\{([^}]*)\}", css)
+        if card:
+            tokens = {**tokens, **dict(re.findall(r"--([\w-]+):\s*(#[0-9A-Fa-f]{6})\b", card.group(1)))}
+    return tokens
+
+
+@pytest.mark.parametrize("skin", SKINS)
+@pytest.mark.parametrize("mode", ["light", "dark"])
+def test_editor_contrast(skin, mode):
+    tokens = _editor_tokens(skin, mode)
+    missing = sorted({t for pair in EDITOR_PAIRS for t in pair[:2] if t not in tokens})
+    assert not missing, f"{skin}/{mode}: missing editor tokens {missing}"
+    failures = [f"{fg} on {bg}: {contrast(tokens[fg], tokens[bg]):.2f} < {need}"
+                for fg, bg, need in EDITOR_PAIRS if contrast(tokens[fg], tokens[bg]) < need]
+    assert not failures, f"{skin}/{mode}: " + "; ".join(failures)
+
+
 def test_typewriter_night_cards_keep_contrast():
     css = _skin_css("typewriter")
     m = re.search(r'\.qbox,\s*\[data-skin="typewriter"\]\[data-mode="dark"\] \.fc-face\s*\{([^}]*)\}', css)

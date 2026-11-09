@@ -129,7 +129,7 @@ function renderMenu() {
     h("section", {}, h("h2", {}, "Appearance"), h("div", { class: "row" }, [["system", "System"], ["light", "Light"], ["dark", "Dark"]].map(([id, name]) =>
       h("button", { type: "button", class: "choice", "aria-pressed": String((pref.get("theme") || "system") === id),
         onclick: () => { pref.set("theme", id); applyLook(); renderMenu(); } }, name)))),
-    menuExtras());
+    ...[].concat(menuExtras()).filter(Boolean));
 }
 function closeMenu() { menu.hidden = true; menuBtn.setAttribute("aria-expanded", "false"); }
 menuBtn.addEventListener("click", e => {
@@ -141,21 +141,44 @@ document.addEventListener("click", e => { if (!menu.hidden && !menu.contains(e.t
 const menuAction = (label, fn, disabled = false) =>
   h("button", { type: "button", class: "choice", disabled, onclick: () => { closeMenu(); fn(); } }, label);
 
+/* ---------------- code editor (vendored CodeMirror, only present when the quiz has code items) ---------------- */
+const LANG_NAMES = { java: "Java", python: "Python", cpp: "C/C++", javascript: "JavaScript", sql: "SQL", go: "Go", rust: "Rust" };
+const hasEditor = () => !!(window.EZCM && window.EZCM.createEditor);
+const vimOn = () => pref.get("vim") === "on";
+let liveEditors = [];
+const dropEditors = () => { for (const e of liveEditors) { try { e.destroy(); } catch {} } liveEditors = []; };
+// Mount an editor in `host`; returns the editor, or null after rendering the textarea fallback.
+function mountEditor(host, opts, fallback) {
+  if (hasEditor()) {
+    try { const ed = window.EZCM.createEditor(host, { vim: vimOn(), ...opts }); liveEditors.push(ed); return ed; }
+    catch (e) { console.error("eztudy: editor failed, using plain text", e); }
+  }
+  host.replaceChildren(...fallback());
+  return null;
+}
+const codeBlock = (text, lang) => rich("```" + (lang || "") + "\n" + String(text ?? "").replace(/\n+$/, "") + "\n```", "div");
+
 /* ---------------- quiz ---------------- */
 function quiz(items) {
   const instant = DATA.instant_feedback === true;
   let order = items.map((_, i) => i), pos = 0, states = {}, session = newSession();
-  const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: "" });
+  const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: null, ticks: new Set() });
+  const draftOf = (it, st) => st.draft ?? (it.type === "code" ? String(it.starter || "").replace("$0", "") : "");
+  const hasCode = items.some(it => it.type === "code");
+  let currentEditor = null;
   const optionsOf = it => it.type === "true_false" ? ["True", "False"] : (it.options || []);
   const correctIdx = it => it.type === "true_false" ? [it.answer === true || it.answer === "true" ? 0 : 1]
     : Array.isArray(it.answer) ? it.answer.slice().sort((a, b) => a - b) : [it.answer];
-  const answerText = it => it.type === "short" ? "" : correctIdx(it).map(i => optionsOf(it)[i]).join("; ");
+  const answerText = it => it.type === "short" || it.type === "code" ? "" : correctIdx(it).map(i => optionsOf(it)[i]).join("; ");
 
   menuExtras = () => {
     const missed = order.filter(i => states[i] && states[i].graded && !states[i].ok);
-    return h("section", {}, h("h2", {}, "Quiz"), h("div", { class: "choices" },
+    return [h("section", {}, h("h2", {}, "Quiz"), h("div", { class: "choices" },
       menuAction(`Retry missed (${missed.length})`, () => start(shuffle(missed)), !missed.length),
-      menuAction("Restart (shuffled)", () => start(shuffle(items.map((_, i) => i))))));
+      menuAction("Restart (shuffled)", () => start(shuffle(items.map((_, i) => i)))))),
+      hasCode && hasEditor() ? h("section", {}, h("h2", {}, "Code editor"), h("div", { class: "row" }, [["off", "Standard keys"], ["on", "Vim keys"]].map(([v, name]) =>
+        h("button", { type: "button", class: "choice", "aria-pressed": String((vimOn() ? "on" : "off") === v),
+          onclick: () => { pref.set("vim", v); if (currentEditor) currentEditor.setVim(v === "on"); renderMenu(); } }, name)))) : null];
   };
   function start(newOrder) { order = newOrder; pos = 0; states = {}; session = newSession(); render(); }
 
@@ -173,12 +196,15 @@ function quiz(items) {
   }
 
   function render() {
+    dropEditors(); currentEditor = null;
     stage.replaceChildren();
     if (pos >= order.length) return summary();
     setCount(`${pos + 1} / ${order.length}`);
     const qi = order[pos], it = items[qi], st = S(qi);
     const multi = it.type === "multi";
-    const typeLabel = { mcq: "Choose one", true_false: "True or false", multi: "Select all that apply", short: "Write your answer" }[it.type];
+    const lang = it.type === "code" && hasEditor() ? window.EZCM.resolveLang(it.language).id : "";
+    const typeLabel = { mcq: "Choose one", true_false: "True or false", multi: "Select all that apply", short: "Write your answer",
+      code: "Write code" + (LANG_NAMES[lang] || it.language ? ` (${LANG_NAMES[lang] || it.language})` : "") + ", then submit to compare with a model solution" }[it.type];
     const box = h("article", { class: "qbox", "aria-labelledby": "qh" },
       h("div", { class: "meta" }, [it.topic, it.difficulty, ...(it.tags || [])].filter(Boolean).map(t => h("span", {}, t))),
       h("h1", { class: "q", id: "qh", tabindex: "-1" }, it.question),
@@ -193,10 +219,12 @@ function quiz(items) {
       pos + 1 < order.length || !allGraded ? "Next" : "See results", ICON.right());
     const actions = h("div", { class: "actions" }, back, h("span", { class: "spacer" }));
 
+    if (it.type === "code") return renderCode(qi, it, st, box, actions, next);
+
     if (it.type === "short") {
       const ta = h("textarea", { class: "answer", spellcheck: "false", placeholder: "Type your answer, then reveal the model answer…",
         disabled: st.revealed, "aria-label": "Your answer", oninput: e => { st.draft = e.target.value; } });
-      ta.value = st.draft;
+      ta.value = draftOf(it, st);
       box.append(ta);
       if (!st.revealed) {
         actions.append(h("button", { type: "button", class: "btn",
@@ -238,6 +266,63 @@ function quiz(items) {
     actions.append(next);
     box.append(actions);
     stage.append(...progress(), box);
+  }
+
+  function renderCode(qi, it, st, box, actions, next) {
+    const host = h("div", { class: "code-host" });
+    box.append(host);
+    const fallbackArea = () => {
+      const ta = h("textarea", { class: "answer code-fallback", spellcheck: "false", disabled: st.revealed, "aria-label": "Your code",
+        placeholder: "Write your code here…", oninput: e => { st.draft = e.target.value; } });
+      ta.value = draftOf(it, st);
+      return [ta, h("p", { class: "hint" }, "Editor unavailable: plain text mode.")];
+    };
+    const rubric = Array.isArray(it.rubric) ? it.rubric : [];
+    let fb = null;
+    if (!st.revealed) {
+      actions.append(h("button", { type: "button", class: "btn", onclick: () => { st.draft = draftOf(it, st); st.revealed = true; render(); say("Submitted. Compare with the model solution, then grade yourself."); } }, "Submit"), next);
+    } else {
+      fb = h("div", { class: "fb" });
+      if (st.graded) fb.append(...verdict(st.ok, it, true));
+      const model = h("div", { class: "code-host model" });
+      fb.append(h("p", { class: "label" }, "Model solution"), model);
+      if (rubric.length) fb.append(rubricList(it, st, rubric));
+      fb.append(...[explain(it), citeList(it)].filter(Boolean));
+      box.append(fb);
+      if (!st.graded) actions.append(
+        h("button", { type: "button", class: "btn ghost", onclick: () => grade(qi, false) }, "I missed it"),
+        h("button", { type: "button", class: "btn", onclick: () => grade(qi, true) }, "I got it"));
+      actions.append(next);
+    }
+    box.append(actions);
+    stage.append(...progress(), box);
+    // Mount after the box is in the document so CodeMirror can measure it.
+    const ed = mountEditor(host, { doc: st.draft ?? String(it.starter || ""), language: it.language, identifiers: (it.context || {}).identifiers || [],
+      readOnly: st.revealed, label: "Your code", onChange: text => { st.draft = text; } }, fallbackArea);
+    if (ed && !st.revealed) currentEditor = ed;
+    if (ed && st.revealed && rubric.some(c => c.match)) {
+      ed.setHints(window.EZCM.rubricHints(ed.getText(), rubric).filter(r => r.checked).map(r => ({ line: r.line || 1, ok: !!r.line, text: r.criterion.text }))
+        .filter(hh => hh.ok));
+    }
+    if (fb) mountEditor(fb.querySelector(".code-host.model"), { doc: it.answer, language: it.language, readOnly: true, label: "Model solution" },
+      () => [codeBlock(it.answer, it.language)]);
+  }
+
+  // Rubric: a self-check list. `match` hints come from the quiz author, are labelled as hints, never grade.
+  function rubricList(it, st, rubric) {
+    const hints = hasEditor() ? window.EZCM.rubricHints(st.draft || "", rubric) : rubric.map(c => ({ criterion: c, line: null, checked: false }));
+    const total = rubric.reduce((a, c) => a + (+c.points || 0), 0);
+    const ticked = rubric.reduce((a, c, k) => a + (st.ticks.has(k) ? (+c.points || 0) : 0), 0);
+    return h("section", { class: "rubric", "aria-label": "Rubric" },
+      h("p", { class: "label" }, "Rubric: tick what your code does", total ? h("span", { class: "pts" }, ` ${ticked} / ${total} pts`) : null),
+      h("ul", {}, rubric.map((c, k) => {
+        const hint = hints[k];
+        return h("li", {}, h("button", { type: "button", class: "tick", role: "checkbox", "aria-checked": String(st.ticks.has(k)),
+          onclick: () => { st.ticks.has(k) ? st.ticks.delete(k) : st.ticks.add(k); render(); } },
+          h("span", { class: "box", "aria-hidden": "true" }, st.ticks.has(k) ? ICON.check() : null),
+          h("span", { class: "txt" }, c.text), c.points != null ? h("span", { class: "pts" }, `${c.points} pt`) : null),
+          hint && hint.checked ? h("span", { class: "rhint " + (hint.line ? "ok" : "bad") }, hint.line ? `hint: line ${hint.line}` : "hint: not found") : null);
+      })));
   }
 
   function verdict(ok, it, self = false) {
@@ -295,15 +380,17 @@ function quiz(items) {
     for (const i of order) { const t = items[i].topic; if (t) { (topics[t] ||= [0, 0]); topics[t][1]++; if (states[i].ok) topics[t][0]++; } }
     const given = i => {
       const it = items[i], st = states[i];
-      if (it.type === "short") return st.draft.trim() ? "self-graded: missed" : "(left blank)";
+      if (it.type === "short" || it.type === "code") return (st.draft || "").trim() ? "self-graded: missed" : "(left blank)";
       return [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; ") || "—";
     };
     session.report ||= makeReport(session, order.map(i => {
       const it = items[i], st = states[i];
       return { id: it.id || `q${i + 1}`, type: it.type, topic: it.topic || null, tags: it.tags || [], difficulty: it.difficulty || null,
-        question: it.question, result: st.ok ? "correct" : "wrong", graded: it.type === "short" ? "self" : "auto",
-        given: it.type === "short" ? st.draft : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
-        correct_answer: it.type === "short" ? it.answer : answerText(it) };
+        question: it.question, result: st.ok ? "correct" : "wrong", graded: it.type === "short" || it.type === "code" ? "self" : "auto",
+        given: it.type === "short" || it.type === "code" ? (st.draft || "") : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
+        correct_answer: it.type === "short" || it.type === "code" ? it.answer : answerText(it),
+        ...(it.type === "code" ? { language: it.language || null,
+          rubric: (it.rubric || []).map((c, k) => ({ id: c.id || null, text: c.text, points: c.points ?? null, ticked: st.ticks.has(k) })) } : {}) };
     }), { right, total });
     stage.replaceChildren(...[...progress(),
       h("div", { class: "score" }, h("span", { class: "big" }, right), h("span", { class: "of" }, `of ${total} · ${Math.round(right / total * 100)}% · best ${Math.round(best * 100)}% over ${hist.attempts.length} attempt${hist.attempts.length > 1 ? "s" : ""}`)),
@@ -314,7 +401,7 @@ function quiz(items) {
           const it = items[i];
           return h("li", {}, h("span", { class: "mq" }, it.question),
             h("dl", {}, h("dt", {}, "You"), h("dd", {}, given(i)),
-              h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : answerText(it))),
+              h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : it.type === "code" ? codeBlock(it.answer, it.language) : answerText(it))),
             explain(it));
         })) : h("p", { class: "expl" }, "Every answer was right.")),
       reportBox(session.report),
