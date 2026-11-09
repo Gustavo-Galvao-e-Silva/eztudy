@@ -283,6 +283,20 @@ textarea.answer:disabled { opacity: .85; }
 .cite .src { overflow-wrap: anywhere; }
 .cite .loc { color: var(--muted); }
 .rich { white-space: pre-wrap; overflow-wrap: anywhere; }
+.rich > * { margin: 0; }
+.rich > * + * { margin-top: .6em; }
+.rich p { margin: 0; }
+.rich ul, .rich ol { margin: 0; padding-left: 1.5em; text-align: left; }
+.rich li > * { margin: 0; }
+.rich li + li { margin-top: .25em; }
+.rich blockquote { margin: 0; padding-left: 12px; border-left: 3px solid var(--line-strong); color: var(--muted); }
+.rich a { color: var(--accent-ink); }
+.rich :not(pre) > code {
+  font-family: var(--f-mono); font-size: .88em; padding: .08em .35em; border-radius: 4px;
+  background: var(--sunk); border: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.q-more { font-family: var(--f-read); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.q-more > * + * { margin-top: 0; }
 pre.code {
   margin: 4px 0; padding: 12px 14px; max-width: 100%; overflow-x: auto; white-space: pre; tab-size: 4;
   font-size: .82rem; line-height: 1.6; text-align: left;

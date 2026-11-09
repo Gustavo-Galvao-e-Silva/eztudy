@@ -101,7 +101,9 @@
 [data-skin="terminal"] .verdict-term.ok::after { content: "  [exit 0]"; color: var(--muted); font-weight: 400; text-shadow: none; }
 [data-skin="terminal"] .verdict-term.bad::after { content: "  [exit 1]"; color: var(--muted); font-weight: 400; text-shadow: none; }
 [data-skin="terminal"] .expl { color: var(--muted); }
-[data-skin="terminal"] .expl::before { content: "# "; color: var(--accent-ink); }
+/* A hanging "# " gutter, so the prefix stays beside the text when the explanation holds lists or code. */
+[data-skin="terminal"] .expl { position: relative; padding-left: 2ch; }
+[data-skin="terminal"] .expl::before { content: "#"; color: var(--accent-ink); position: absolute; left: 0; top: 0; }
 [data-skin="terminal"] .label::before { content: "$ cat "; color: var(--accent-ink); text-transform: none; }
 [data-skin="terminal"] .label { text-transform: lowercase; letter-spacing: 0; font-size: .8125rem; }
 [data-skin="terminal"] .cites { flex-direction: column; gap: 2px; }

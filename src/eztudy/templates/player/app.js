@@ -29,16 +29,86 @@ const ICON = {
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const say = msg => { const el = $("#live"); el.textContent = ""; setTimeout(() => { el.textContent = msg; }, 30); };
 
-// Text keeps its line breaks; ``` fences (and unfenced multi-line code) become <pre>. DOM only, no innerHTML.
+/* Markdown subset, built as DOM (never innerHTML, so quiz text can't inject markup).
+   Blocks: ``` / ~~~ fences, paragraphs (single newlines kept), - * + and 1. lists (nestable), # headings, > quotes,
+   unfenced multi-line code. Inline: `code`, **bold**, *em* / _em_, ~~strike~~, [text](https://…), \-escapes. */
 const looksLikeCode = t => /\n/.test(t) && (/[{};]\s*$/m.test(t) || /^(\t| {2,})\S/m.test(t));
-const rich = (text, tag = "span") => {
-  const s = String(text ?? "");
-  if (!s.includes("```")) return looksLikeCode(s) ? h("pre", { class: "code" }, h("code", {}, s.replace(/^\n+|\s+$/g, ""))) : h(tag, { class: "rich" }, s);
-  return h(tag, { class: "rich" }, s.split(/```/).map((part, i) => {
-    if (i % 2 === 0) return part.replace(/^\n|\n$/g, "");
-    return h("pre", { class: "code" }, h("code", {}, part.replace(/^[\w+#.-]*\n/, "").replace(/\n$/, "")));
-  }));
+const INLINE = /\\([\\`*_~\[\]()#>+\-.!|])|(`+)([^`]|[^`][\s\S]*?[^`])\2(?!`)|\*\*(?=\S)([\s\S]*?\S)\*\*|~~(?=\S)([\s\S]*?\S)~~|\*(?=[^\s*])([\s\S]*?[^\s*\\])\*(?!\*)|(?<![\w\\])_(?=[^\s_])([\s\S]*?[^\s_])_(?!\w)|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g;
+function mdInline(text) {
+  const s = String(text ?? ""), out = [], re = new RegExp(INLINE.source, "g");
+  let last = 0, m;
+  while ((m = re.exec(s))) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    if (m[1] != null) out.push(m[1]);
+    else if (m[2]) out.push(h("code", {}, m[3].length > 2 && /^ .* $/.test(m[3]) ? m[3].slice(1, -1) : m[3]));
+    else if (m[4] != null) out.push(h("strong", {}, mdInline(m[4])));
+    else if (m[5] != null) out.push(h("del", {}, mdInline(m[5])));
+    else if (m[6] != null || m[7] != null) out.push(h("em", {}, mdInline(m[6] ?? m[7])));
+    else out.push(h("a", { href: m[9], target: "_blank", rel: "noopener noreferrer" }, mdInline(m[8])));
+    last = re.lastIndex;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([\w+#.-]*)/, ITEM = /^( *)([-*+]|\d{1,9}[.)])\s+(.*)$/, HEAD = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/, QUOTE = /^ {0,3}> ?/;
+const pre = code => h("pre", { class: "code" }, h("code", {}, code));
+function mdBlocks(text) {
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n"), out = [];
+  const starts = l => FENCE.test(l) || HEAD.test(l) || QUOTE.test(l) || (ITEM.test(l) && /^ *([-*+]|1[.)])\s/.test(l));
+  let i = 0, m;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if ((m = line.match(FENCE))) {
+      const close = new RegExp("^ {0,3}" + m[1][0] + "{" + m[1].length + ",}\\s*$"), body = [];
+      for (i++; i < lines.length && !close.test(lines[i]); i++) body.push(lines[i]);
+      i++; out.push(pre(body.join("\n"))); continue;
+    }
+    if ((m = line.match(HEAD))) { out.push(h("p", { class: "md-h" }, h("strong", {}, mdInline(m[2])))); i++; continue; }
+    if (QUOTE.test(line)) {
+      const body = [];
+      while (i < lines.length && QUOTE.test(lines[i])) body.push(lines[i++].replace(QUOTE, ""));
+      out.push(h("blockquote", {}, mdBlocks(body.join("\n")))); continue;
+    }
+    if ((m = line.match(ITEM))) {
+      const indent = m[1].length, ordered = /\d/.test(m[2]), items = [];
+      while (i < lines.length && (m = lines[i].match(ITEM)) && m[1].length === indent && /\d/.test(m[2]) === ordered) {
+        const body = [m[3]], start = items.length ? null : parseInt(m[2], 10);
+        // Continuation: indented lines (incl. nested lists), or blank lines followed by indented ones.
+        for (i++; i < lines.length; i++) {
+          const l = lines[i];
+          if (l.trim() && l.search(/\S/) > indent) body.push(l.slice(Math.min(l.search(/\S/), indent + 2)));
+          else if (!l.trim() && lines[i + 1] && lines[i + 1].search(/\S/) > indent) body.push("");
+          else break;
+        }
+        items.push({ body: body.join("\n"), start });
+      }
+      const list = h(ordered ? "ol" : "ul", ordered && items[0].start !== 1 ? { start: items[0].start } : {},
+        items.map(it => h("li", {}, mdFlow(it.body))));
+      out.push(list); continue;
+    }
+    const para = [line];
+    for (i++; i < lines.length && lines[i].trim() && !starts(lines[i]); i++) para.push(lines[i]);
+    const t = para.join("\n");
+    out.push(looksLikeCode(t) ? pre(t.replace(/\s+$/, "")) : h("p", {}, mdInline(t)));
+  }
+  return out;
+}
+// Flow content for inline-ish slots (options, list items): a lone plain paragraph unwraps to its inline nodes.
+const mdFlow = text => {
+  const b = mdBlocks(text);
+  return b.length === 1 && b[0].tagName === "P" && !b[0].className ? [...b[0].childNodes] : b;
 };
+const rich = (text, tag = "div") => h(tag, { class: "rich" }, mdFlow(text));
+// The question heading takes the first paragraph; anything after it (code, lists) follows in a body block.
+const questionEls = q => {
+  const blocks = mdBlocks(q), head = h("h1", { class: "q rich", id: "qh", tabindex: "-1" });
+  if (blocks[0] && blocks[0].tagName === "P" && !blocks[0].className) head.append(...blocks.shift().childNodes);
+  else head.setAttribute("aria-label", String(q ?? "").split("\n").find(l => l.trim() && !FENCE.test(l)) || "Question");
+  return [head, blocks.length ? h("div", { class: "q-more rich" }, blocks) : null];
+};
+// Join several answers (option texts) as rendered Markdown, separated by "; ".
+const joinRich = texts => texts.flatMap((t, k) => k ? ["; ", ...mdFlow(t)] : mdFlow(t));
 
 /* ---------------- viewer preferences (skin, light/dark) ---------------- */
 const pref = {
@@ -104,7 +174,7 @@ const setCount = s => { $("#count").textContent = s; };
 
 const explain = item => {
   if (!item.explanation) return null;
-  const el = rich(item.explanation, "p");
+  const el = rich(item.explanation);
   el.classList.add("expl");
   return el;
 };
@@ -156,7 +226,7 @@ function mountEditor(host, opts, fallback) {
   host.replaceChildren(...fallback());
   return null;
 }
-const codeBlock = (text, lang) => rich("```" + (lang || "") + "\n" + String(text ?? "").replace(/\n+$/, "") + "\n```", "div");
+const codeBlock = text => pre(String(text ?? "").replace(/\n+$/, ""));
 
 /* ---------------- quiz ---------------- */
 function quiz(items) {
@@ -170,6 +240,7 @@ function quiz(items) {
   const correctIdx = it => it.type === "true_false" ? [it.answer === true || it.answer === "true" ? 0 : 1]
     : Array.isArray(it.answer) ? it.answer.slice().sort((a, b) => a - b) : [it.answer];
   const answerText = it => it.type === "short" || it.type === "code" ? "" : correctIdx(it).map(i => optionsOf(it)[i]).join("; ");
+  const answerRich = it => it.type === "short" || it.type === "code" ? [] : joinRich(correctIdx(it).map(i => optionsOf(it)[i]));
 
   menuExtras = () => {
     const missed = order.filter(i => states[i] && states[i].graded && !states[i].ok);
@@ -207,7 +278,7 @@ function quiz(items) {
       code: "Write code" + (LANG_NAMES[lang] || it.language ? ` (${LANG_NAMES[lang] || it.language})` : "") + ", then submit to compare with a model solution" }[it.type];
     const box = h("article", { class: "qbox", "aria-labelledby": "qh" },
       h("div", { class: "meta" }, [it.topic, it.difficulty, ...(it.tags || [])].filter(Boolean).map(t => h("span", {}, t))),
-      h("h1", { class: "q", id: "qh", tabindex: "-1" }, it.question),
+      ...questionEls(it.question),
       h("p", { class: "hint" }, typeLabel + (multi ? ". Graded as an exact set." : "")));
 
     // Every question gets Back / Next. Next is the primary action once the question is answered.
@@ -254,7 +325,7 @@ function quiz(items) {
         else cls += " dim";
       }
       return h("button", { type: "button", class: cls, role: multi ? "checkbox" : "radio", "aria-checked": String(sel), disabled: st.graded,
-        onclick: () => pick(qi, i) }, h("span", { class: "mark", "aria-hidden": "true" }), h("span", { class: "txt" }, o), flag);
+        onclick: () => pick(qi, i) }, h("span", { class: "mark", "aria-hidden": "true" }), h("span", { class: "txt rich" }, mdFlow(o)), flag);
     }));
     box.append(list);
     if (st.graded) {
@@ -305,7 +376,7 @@ function quiz(items) {
         .filter(hh => hh.ok));
     }
     if (fb) mountEditor(fb.querySelector(".code-host.model"), { doc: it.answer, language: it.language, readOnly: true, label: "Model solution" },
-      () => [codeBlock(it.answer, it.language)]);
+      () => [codeBlock(it.answer)]);
   }
 
   // Rubric: a self-check list. `match` hints come from the quiz author, are labelled as hints, never grade.
@@ -320,17 +391,17 @@ function quiz(items) {
         return h("li", {}, h("button", { type: "button", class: "tick", role: "checkbox", "aria-checked": String(st.ticks.has(k)),
           onclick: () => { st.ticks.has(k) ? st.ticks.delete(k) : st.ticks.add(k); render(); } },
           h("span", { class: "box", "aria-hidden": "true" }, st.ticks.has(k) ? ICON.check() : null),
-          h("span", { class: "txt" }, c.text), c.points != null ? h("span", { class: "pts" }, `${c.points} pt`) : null),
+          h("span", { class: "txt rich" }, mdFlow(c.text)), c.points != null ? h("span", { class: "pts" }, `${c.points} pt`) : null),
           hint && hint.checked ? h("span", { class: "rhint " + (hint.line ? "ok" : "bad") }, hint.line ? `hint: line ${hint.line}` : "hint: not found") : null);
       })));
   }
 
   function verdict(ok, it, self = false) {
-    const ans = !ok && it.type !== "short" ? answerText(it) : "";
+    const ans = !ok && it.type !== "short" ? answerRich(it) : [];
     return [
       h("div", { class: "verdict" }, h("span", { class: "badge " + (ok ? "ok" : "bad") }, ok ? ICON.check() : ICON.x(), ok ? "Correct" : "Not quite"),
-        self ? h("span", { class: "ans" }, "self-graded") : ans ? h("span", { class: "ans" }, "Answer: " + ans) : null),
-      h("p", { class: "verdict-term " + (ok ? "ok" : "bad") }, ok ? "> correct" : ans ? "> wrong, expected: " + ans : "> marked: missed"),
+        self ? h("span", { class: "ans" }, "self-graded") : ans.length ? h("span", { class: "ans" }, "Answer: ", ans) : null),
+      h("p", { class: "verdict-term " + (ok ? "ok" : "bad") }, ok ? "> correct" : ans.length ? ["> wrong, expected: ", ans.map(n => n.cloneNode(true))] : "> marked: missed"),
       h("span", { class: "stamp " + (ok ? "ok" : "bad"), "aria-hidden": "true" }, ok ? "Correct" : "Missed"),
     ];
   }
@@ -381,7 +452,8 @@ function quiz(items) {
     const given = i => {
       const it = items[i], st = states[i];
       if (it.type === "short" || it.type === "code") return (st.draft || "").trim() ? "self-graded: missed" : "(left blank)";
-      return [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; ") || "—";
+      const picked = [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]);
+      return picked.length ? joinRich(picked) : "—";
     };
     session.report ||= makeReport(session, order.map(i => {
       const it = items[i], st = states[i];
@@ -399,9 +471,9 @@ function quiz(items) {
       h("section", { class: "sect" }, h("h2", {}, missed.length ? "To review" : "Perfect score"),
         missed.length ? h("ul", { class: "misses" }, missed.map(i => {
           const it = items[i];
-          return h("li", {}, h("span", { class: "mq" }, it.question),
+          return h("li", {}, h("div", { class: "mq rich" }, mdFlow(it.question)),
             h("dl", {}, h("dt", {}, "You"), h("dd", {}, given(i)),
-              h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : it.type === "code" ? codeBlock(it.answer, it.language) : answerText(it))),
+              h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : it.type === "code" ? codeBlock(it.answer) : answerRich(it))),
             explain(it));
         })) : h("p", { class: "expl" }, "Every answer was right.")),
       reportBox(session.report),

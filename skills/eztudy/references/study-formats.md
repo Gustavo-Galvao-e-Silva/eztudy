@@ -51,8 +51,10 @@ also accepted.
 - MCQ: 4 options, one unambiguously correct; distractors plausible, similar length, drawn from
   related concepts in the sources; avoid "all/none of the above". Vary the correct position.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
-- Multi-line `answer` / `explanation` text keeps its line breaks; wrap code in ```` ``` ```` fences for
-  a monospace block (unfenced multi-line code is detected too).
+- `question`, `options`, `answer`, `explanation`, rubric text and flashcard faces render Markdown: `` `code` ``,
+  `**bold**`, `*italic*`, `~~strike~~`, `[links](https://…)`, `-` / `1.` lists, `>` quotes, and ```` ``` ```` fences
+  for code blocks (unfenced multi-line code is detected too). Line breaks are kept. A question's first paragraph is
+  its heading; code or lists after it show below. Raw HTML is shown as text, never rendered.
 - Player (click-only, no keyboard shortcuts): clicking an option only selects it; **Confirm** grades it.
   Set top-level `"instant_feedback": true` to grade single-answer items on click instead.
 
