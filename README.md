@@ -59,7 +59,7 @@ eztudy index [--rebuild]          chunk + embed (incremental)
 eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--json]
 eztudy show <chunk-id|path> [--context N] [--pages 3-5]
 eztudy sources                    list tracked sources
-eztudy wiki init|lint|log
+eztudy wiki init|lint [--fix]|log|cite
 eztudy render study/quizzes/x.json
 ```
 

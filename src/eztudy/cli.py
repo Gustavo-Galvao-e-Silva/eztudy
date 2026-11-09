@@ -144,7 +144,7 @@ def cmd_status(ws: Workspace, args) -> int:
         "wiki": {
             "pages": report["pages"],
             "uncovered_sources": report["uncovered_sources"],
-            "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k != "uncovered_sources" and v},
+            "issues": {k: len(v) for k, v in report.items() if isinstance(v, list) and k not in wiki.INFO_KEYS and v},
         },
         "study": sorted(p.relative_to(ws.root).as_posix() for p in ws.study.rglob("*") if p.is_file()) if ws.study.exists() else [],
     }
@@ -277,16 +277,11 @@ def cmd_show(ws: Workspace, args) -> int:
             print(hit.text)
             print()
         return 0
-    rel = target.removeprefix("sources/")
     entries = mf.load(ws)["sources"]
-    e = entries.get(rel)
-    if e is None:
-        matches = [p for p in entries if rel.lower() in p.lower()]
-        if len(matches) == 1:
-            rel, e = matches[0], entries[matches[0]]
-        else:
-            print(f"no tracked source matches {target!r}" + (f"; candidates: {matches}" if matches else " (run `eztudy sync`?)"), file=sys.stderr)
-            return 1
+    rel = _resolve_source(entries, target)
+    if rel is None:
+        return 1
+    e = entries[rel]
     if e.get("status") != "ok":
         print(f"{rel}: not extracted ({e.get('reason', e.get('status'))})", file=sys.stderr)
         return 1
@@ -306,6 +301,21 @@ def cmd_show(ws: Workspace, args) -> int:
     print(f"# {e.get('title')}  [sources/{rel}]  hash {e['hash'][:8]}")
     print(text)
     return 0
+
+
+def _resolve_source(entries: dict, target: str) -> str | None:
+    """Exact source path, chunk id / hash prefix, or unique case-insensitive substring; prints why on failure."""
+    rel = target.removeprefix("sources/")
+    if rel in entries:
+        return rel
+    m = re.fullmatch(r"([0-9a-f]{8,64})(?::\d+)?", rel)
+    if m and (hit := wiki.source_for_hash(entries, m.group(1))):
+        return hit
+    matches = [p for p in entries if rel.lower() in p.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    print(f"no tracked source matches {target!r}" + (f"; candidates: {matches}" if matches else " (run `eztudy sync`?)"), file=sys.stderr)
+    return None
 
 
 def cmd_sources(ws: Workspace, args) -> int:
@@ -379,8 +389,21 @@ def cmd_wiki(ws: Workspace, args) -> int:
                 fh.write(f"{args.detail}\n")
         print(f"logged: {args.message}")
         return 0
+    if args.wiki_cmd == "cite":
+        entries = mf.load(ws)["sources"]
+        rels = [_resolve_source(entries, t) for t in args.targets]
+        if None in rels:
+            return 1
+        print("sources:")
+        for rel in dict.fromkeys(rels):
+            short = entries[rel]["hash"][:8]
+            print(f"  - path: {rel}\n    hash: {repr(short) if short.isdigit() else short}")  # quote all-digit hashes for YAML
+        return 0
     if args.wiki_cmd == "lint":
+        fixed = wiki.fix(ws, mf.load(ws)) if args.fix else []
         report = wiki.lint(ws, mf.load(ws))
+        if args.fix:
+            report = {"fixed": fixed, **report}
         if args.json:
             _print_json(report)
             return 0 if wiki.lint_ok(report) else 1
@@ -388,7 +411,8 @@ def cmd_wiki(ws: Workspace, args) -> int:
         for key, items in report.items():
             if not isinstance(items, list) or not items:
                 continue
-            print(f"\n{key.replace('_', ' ')} ({len(items)}):")
+            info = " (info)" if key in wiki.INFO_KEYS else ""
+            print(f"\n{key.replace('_', ' ')}{info} ({len(items)}):")
             for it in items:
                 print("  - " + (it if isinstance(it, str) else ", ".join(f"{k}={v}" for k, v in it.items())))
         ok = wiki.lint_ok(report)
@@ -459,6 +483,10 @@ def build_parser() -> argparse.ArgumentParser:
     wsub.add_parser("init", help="create wiki/index.md, wiki/log.md and folders")
     w = wsub.add_parser("lint", help="check links, orphans, index coverage, citations")
     w.add_argument("--json", action="store_true")
+    w.add_argument("--fix", action="store_true",
+                   help="fill missing hashes, follow moved sources, add body-cited sources to frontmatter")
+    w = wsub.add_parser("cite", help="print a ready-to-paste `sources:` frontmatter block")
+    w.add_argument("targets", nargs="+", help="source paths, unique substrings, or chunk ids")
     w = wsub.add_parser("log", help="append an entry to wiki/log.md")
     w.add_argument("message")
     w.add_argument("--detail")

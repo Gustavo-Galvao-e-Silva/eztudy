@@ -6,6 +6,7 @@ references/wiki.md.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,7 @@ from .workspace import Workspace
 LINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 FENCE_RE = re.compile(r"```.*?```|`[^`\n]*`", re.S)
 SPECIAL = {"index", "log"}
+CID_CITE_RE = re.compile(r"\b([0-9a-f]{8}):\d+\b")
 
 
 def slug(name: str) -> str:
@@ -96,6 +98,75 @@ def _source_entries(meta: dict) -> list[dict]:
     return out
 
 
+def source_for_hash(sources: dict, prefix: str) -> str | None:
+    """The tracked source whose content hash starts with `prefix` (first path if several share it)."""
+    return next((rel for rel, e in sorted(sources.items()) if e.get("hash", "").startswith(prefix)), None)
+
+
+def body_sources(body: str, sources: dict) -> set[str]:
+    """Sources a page body cites inline: chunk ids like [3fa9c2d1:12], full paths, or unique basenames."""
+    text = LINK_RE.sub(" ", FENCE_RE.sub(" ", body))
+    found = set()
+    for m in CID_CITE_RE.finditer(text):
+        rel = source_for_hash(sources, m.group(1))
+        if rel:
+            found.add(rel)
+    basenames: dict[str, list[str]] = {}
+    for rel in sources:
+        basenames.setdefault(Path(rel).name, []).append(rel)
+    for rel in sources:
+        names = [rel] + ([Path(rel).name] if len(basenames[Path(rel).name]) == 1 and "/" in rel else [])
+        if any(re.search(r"(?<![\w/.-])(?:sources/)?" + re.escape(n) + r"(?![\w/-])", text) for n in names):
+            found.add(rel)
+    return found
+
+
+def fix(ws: Workspace, manifest: dict, today: dt.date | None = None) -> list[dict]:
+    """Repair frontmatter `sources:` mechanically. Never touches stale hashes (those need a re-read).
+
+    Fills missing hashes, follows moved files by hash, and adds sources cited in the body.
+    Only the YAML block is rewritten; the body is kept byte-for-byte.
+    """
+    sources = manifest.get("sources", {})
+    today = today or dt.date.today()
+    fixed = []
+    for p in load_pages(ws):
+        if p.is_special or p.meta.get("__invalid__"):
+            continue
+        raw = p.meta.get("sources") or []
+        entries = [raw] if isinstance(raw, (str, dict)) else list(raw) if isinstance(raw, list) else []
+        changes = []
+        listed = set()
+        for i, e in enumerate(entries):
+            item = {"path": e} if isinstance(e, str) else e
+            if not isinstance(item, dict) or not item.get("path"):
+                continue
+            spath = str(item["path"]).removeprefix("sources/")
+            if spath not in sources and item.get("hash") is not None:
+                moved = source_for_hash(sources, str(item["hash"]))
+                if moved:
+                    item = {**item, "path": moved}
+                    changes.append(f"path {spath} -> {moved}")
+                    spath = moved
+            if spath in sources and item.get("hash") is None:
+                item = {**item, "hash": sources[spath]["hash"][:8]}
+                changes.append(f"hash for {spath}")
+            if item is not e:
+                entries[i] = item
+            listed.add(spath)
+        for rel in sorted(body_sources(p.body, sources) - listed):
+            entries.append({"path": rel, "hash": sources[rel]["hash"][:8]})
+            changes.append(f"added {rel} (cited in body)")
+        if not changes:
+            continue
+        meta = dict(p.meta)
+        meta["sources"] = entries
+        meta["updated"] = today
+        p.path.write_text("---\n" + yaml.safe_dump(meta, sort_keys=False, allow_unicode=True) + "---\n" + p.body)
+        fixed.append({"page": p.rel, "changes": changes})
+    return fixed
+
+
 def lint(ws: Workspace, manifest: dict) -> dict:
     pages = load_pages(ws)
     res = Resolver(pages)
@@ -108,7 +179,9 @@ def lint(ws: Workspace, manifest: dict) -> dict:
         "stale_citations": [],
         "unknown_sources": [],
         "invalid_frontmatter": [],
+        "body_not_in_frontmatter": [],
         "uncovered_sources": [],
+        "frontmatter_not_in_body": [],
     }
     if not pages:
         report["uncovered_sources"] = sorted(sources)
@@ -135,6 +208,10 @@ def lint(ws: Workspace, manifest: dict) -> dict:
         entries = _source_entries(p.meta)
         if not entries:
             report["uncited"].append(p.rel)
+        listed = {str(e["path"]).removeprefix("sources/") for e in entries}
+        in_body = body_sources(p.body, sources)
+        report["body_not_in_frontmatter"] += [{"page": p.rel, "source": s} for s in sorted(in_body - listed)]
+        report["frontmatter_not_in_body"] += [{"page": p.rel, "source": s} for s in sorted(listed - in_body) if s in sources]
         for e in entries:
             spath = str(e["path"]).removeprefix("sources/")
             cited.add(spath)
@@ -157,6 +234,10 @@ def lint(ws: Workspace, manifest: dict) -> dict:
     return {"pages": len(pages), **report}
 
 
+INFO_KEYS = {"uncovered_sources", "frontmatter_not_in_body"}  # worth a look, but not lint failures
+
+
 def lint_ok(report: dict) -> bool:
-    keys = ["broken_links", "orphans", "missing_from_index", "uncited", "stale_citations", "unknown_sources", "invalid_frontmatter"]
+    keys = ["broken_links", "orphans", "missing_from_index", "uncited", "stale_citations", "unknown_sources",
+            "invalid_frontmatter", "body_not_in_frontmatter"]
     return not any(report[k] for k in keys)

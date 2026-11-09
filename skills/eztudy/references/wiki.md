@@ -51,6 +51,9 @@ One-paragraph definition in plain language.
 
 Rules:
 - **Cite inline**: `(file, page N)`, `(file, slide N)`, or a chunk id `[3fa9c2d1:12]`. No uncited facts.
+  Every source cited in the body must be in `sources:` (lint: `body_not_in_frontmatter`). Don't copy
+  hashes by hand: `eztudy wiki cite <path|cid>...` prints the block, and `eztudy wiki lint --fix` fills it in.
+  Quote a hash that is all digits (`hash: "12345678"`), or YAML reads it as a number.
 - **Link generously**: first mention of any concept/entity that has (or deserves) a page gets `[[link]]`.
   Create stub pages for important link targets rather than leaving links broken.
 - **Synthesize, don't copy**: topic pages merge what *all* sources say; note disagreements explicitly
@@ -89,7 +92,11 @@ left, delete it (and its index line) or fold it into another page.
 **Query → file back**: when an answer you gave is a durable synthesis (comparison, explanation),
 save it as a page (`type: question` or a topic), link it, index it, log it.
 
-**Lint pass** (`eztudy wiki lint`): fix broken links (create the page or fix the link), orphans (link
+**Lint pass** (`eztudy wiki lint`): first run `eztudy wiki lint --fix`. It mechanically repairs `sources:`
+frontmatter: fills missing hashes, follows sources that moved (by hash), adds sources cited in the body,
+and bumps `updated:` on pages it changed. It rewrites only the frontmatter (YAML comments there are
+dropped) and never refreshes a stale hash; that needs a re-read. `frontmatter_not_in_body` is
+informational: a listed source the body never cites inline. Then fix broken links (create the page or fix the link), orphans (link
 them from related pages), missing index entries, uncited pages, stale/unknown citations. Then do a
 judgment pass the tool can't: contradictions between pages, claims superseded by newer sources,
 concepts mentioned on many pages that lack their own page, gaps worth flagging to the user.

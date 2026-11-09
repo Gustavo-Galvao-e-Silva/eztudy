@@ -30,7 +30,8 @@ eztudy search "query" [-k 8] [--mode hybrid|vector|fts] [--path bio/] [--full] [
 eztudy show <chunk-id> [--context 1]          # read a chunk (+ neighbours) e.g. 3fa9c2d1:12
 eztudy show <source-path> [--pages 3-5]       # read a source's extracted text (PDF pages / PPTX slides)
 eztudy sources [--json]            # list tracked sources with hash, size, title, status
-eztudy wiki init | lint [--json] | log "ingest | Title" [--detail "..."]
+eztudy wiki init | lint [--fix] [--json] | log "ingest | Title" [--detail "..."]
+eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path + hash)
 eztudy render study/quizzes/x.json [...] [--strict]  # validate + write x.md and interactive x.html;
                                    # warns on citation cids not in the index (--strict: exit 1)
 ```
