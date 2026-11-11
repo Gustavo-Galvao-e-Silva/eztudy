@@ -48,5 +48,21 @@ eq("match partial", C.checkMatching(mt, ["ATP", "Lipids", undefined]), { ok: fal
 for (let k = 0; k < 200; k++) { const s = C.shuffleAway(["a", "b"]); if (s.join() === "a,b") { failed++; console.error("FAIL shuffleAway"); break; } }
 eq("shuffle constant rnd", C.shuffleAway(["a", "b", "c"], () => 0.999).join(), "b,c,a");
 
+// optionOrder: a permutation; pinned options keep their slot; numbers ascend; the answer's slot varies
+const perm = (o, rnd) => C.optionOrder(o, rnd);
+const isPerm = (p, n) => p.length === n && [...p].sort((a, b) => a - b).every((x, i) => x === i);
+eq("order is a permutation", isPerm(perm(["a", "b", "c", "d"]), 4), true);
+for (let k = 0; k < 50; k++) {
+  const p = perm(["Nucleus", "Ribosome", "Golgi", "All of the above"]);
+  if (p[3] !== 3 || !isPerm(p, 4)) { failed++; console.error("FAIL pinned last", p); break; }
+}
+eq("pinned both A and B", perm(["x", "y", "Both A and B", "z"], () => 0)[2], 2);
+eq("pinned none of these", perm(["x", "None of these", "y"], () => 0)[1], 1);
+eq("numbers ascend", perm(["10", "2", "3,5", "-1"]), [3, 1, 2, 0]);
+eq("single option", perm(["only"]), [0]);
+const slots = new Set();
+for (let k = 0; k < 200; k++) slots.add(perm(["a", "b", "c", "d"]).indexOf(0));
+eq("answer lands in every slot", slots.size, 4);
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

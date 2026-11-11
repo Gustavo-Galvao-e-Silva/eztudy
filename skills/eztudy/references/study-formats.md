@@ -55,7 +55,12 @@ citations works too. Keep `source` the path as `eztudy search` gives it.
 - `answer`: 0-based option index (`mcq`), list of indices (`multi`), boolean (`true_false`), model answer string (`short`),
   model solution (`code`, see below); for `numeric`, `cloze`, `ordering` and `matching` see "Exactly-checked items".
 - MCQ: 4 options, one unambiguously correct; distractors plausible, similar length, drawn from
-  related concepts in the sources; avoid "all/none of the above". Vary the correct position.
+  related concepts in the sources; avoid "all/none of the above".
+- The player shuffles `mcq`/`multi` options on every attempt, so don't bother varying the correct position. Never
+  refer to an option by letter or position ("option B", "the first one") in the question or explanation. Options
+  that refer to the others ("All of the above", "Both A and B") keep their slot, and all-numeric options are shown
+  in ascending order. Set `"shuffle": false` on an item whose option order carries meaning (a scale, a sequence),
+  or top-level `"shuffle_options": false` for a whole quiz. `true_false` is never shuffled.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
 - `question`, `options`, `answer`, `explanation`, rubric text and flashcard faces render Markdown: `` `code` ``,
   `**bold**`, `*italic*`, `~~strike~~`, `[links](https://…)`, `-` / `1.` lists, `>` quotes, and ```` ``` ```` fences

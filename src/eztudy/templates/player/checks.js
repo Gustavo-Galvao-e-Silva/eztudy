@@ -69,4 +69,19 @@ function shuffleAway(list, rnd = Math.random) {
   return list.slice(1).concat(list[0]);
 }
 
-if (typeof module !== "undefined") module.exports = { normText, parseNumber, allowedError, checkNumeric, blankOk, blankAnswer, checkCloze, checkOrdering, checkMatching, shuffleAway };
+// Display order of mcq/multi options, as original indices, so the right answer's position never comes from the
+// author. Options that refer to the others ("All of the above", "Both A and B") keep their slot; the rest are
+// shuffled into the remaining slots. All-numeric options are shown in ascending order instead (still not by author).
+const PINNED_OPTION = /\b(all|none|both|neither|any)\s+of\s+(the\s+)?(above|below|these|those|them|the\s+(other\s+)?options)\b|^\s*(both|neither)\b|\b[A-F]\s+(and|or)\s+[A-F]\b/i;
+function optionOrder(options, rnd = Math.random) {
+  const idx = options.map((_, i) => i);
+  const nums = options.map(o => parseNumber(String(o)));
+  if (options.length > 1 && nums.every(n => !Number.isNaN(n))) return idx.sort((a, b) => nums[a] - nums[b] || a - b);
+  const free = idx.filter(i => !PINNED_OPTION.test(String(options[i])));
+  const mixed = free.slice();
+  for (let i = mixed.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [mixed[i], mixed[j]] = [mixed[j], mixed[i]]; }
+  let k = 0;
+  return idx.map(i => free.includes(i) ? mixed[k++] : i);
+}
+
+if (typeof module !== "undefined") module.exports = { normText, parseNumber, allowedError, checkNumeric, blankOk, blankAnswer, checkCloze, checkOrdering, checkMatching, shuffleAway, optionOrder };
