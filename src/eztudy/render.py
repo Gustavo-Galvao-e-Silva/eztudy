@@ -45,11 +45,22 @@ def validate(data: dict) -> list[str]:
     items = data.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["`items` must be a non-empty list"]
+    seen_ids: set[str] = set()
     for n, it in enumerate(items, start=1):
         where = f"item {n}" + (f" ({it.get('id')})" if isinstance(it, dict) and it.get("id") else "")
         if not isinstance(it, dict):
             errs.append(f"{where}: must be an object")
             continue
+        iid = it.get("id")
+        if iid is not None and not (isinstance(iid, str) and iid.strip()):
+            errs.append(f"{where}: `id` must be a non-empty string")
+        elif iid in seen_ids:
+            errs.append(f"{where}: duplicate `id` {iid!r} (ids key the review schedule, so each must be unique)")
+        elif iid:
+            seen_ids.add(iid)
+        src = it.get("src")
+        if src is not None and not (isinstance(src, dict) and all(isinstance(src.get(k), str) and src[k] for k in ("deck", "id"))):
+            errs.append(f"{where}: `src` must be {{\"deck\": str, \"id\": str}} (the item a review deck copied)")
         if not it.get("citations"):
             errs.append(f"{where}: missing `citations` (every item must be grounded in sources)")
         if kind == "flashcards":
@@ -179,6 +190,15 @@ def unknown_citations(data: dict, known_cids: set[str]) -> list[str]:
             if cid and cid not in known_cids:
                 warns.append(f"{where}: unknown chunk id {cid!r}")
     return warns
+
+
+def id_warnings(data: dict) -> list[str]:
+    """Items without an `id` are tracked by position, so reordering the deck mixes up their history."""
+    missing = [str(n) for n, it in enumerate(data.get("items") or [], start=1) if isinstance(it, dict) and not it.get("id")]
+    if not missing:
+        return []
+    return [f"item(s) {', '.join(missing[:10])}{' …' if len(missing) > 10 else ''} have no `id`; add stable ids so "
+            "progress and the review schedule follow each item when the deck is edited"]
 
 
 def load(path: Path) -> dict:
@@ -326,9 +346,9 @@ def to_html(data: dict, skin: str | None = None) -> str:
 
 
 def render(path: Path, known_cids: set[str] | None = None, skin: str | None = None) -> tuple[Path, Path, list[str]]:
-    """Validate and write .md + .html. Returns (md, html, warnings); warnings need `known_cids`."""
+    """Validate and write .md + .html. Returns (md, html, warnings); citation checks need `known_cids`."""
     data = load(path)
-    warns = unknown_citations(data, known_cids) if known_cids is not None else []
+    warns = id_warnings(data) + (unknown_citations(data, known_cids) if known_cids is not None else [])
     md_path, html_path = path.with_suffix(".md"), path.with_suffix(".html")
     md_path.write_text(to_markdown(data))
     html_path.write_text(to_html(data, skin))

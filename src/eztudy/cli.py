@@ -17,6 +17,7 @@ from . import origins
 from . import progress as prog
 from . import render as rendering
 from . import serve as serving
+from . import srs
 from . import vectordb, wiki
 from .workspace import Workspace, WorkspaceError, find_workspace
 
@@ -206,6 +207,13 @@ def cmd_status(ws: Workspace, args) -> int:
     if pg["reports"]:
         print(f"progress: {pg['reports']} sessions, last {pg['last_session'][:10]}"
               + (f"; weak: {', '.join(pg['weak_topics'][:5])}" if pg["weak_topics"] else "") + " -> `eztudy progress`")
+    d = pg["due"]
+    if d["due_now"]:
+        parts = [f"{d['by_kind'].get('quiz', 0)} quiz", f"{d['by_kind'].get('flashcards', 0)} cards"]
+        print(f"review:   {d['due_now']} due now ({', '.join(p for p in parts if not p.startswith('0 '))})"
+              + (f"; {d['due_tomorrow']} more by tomorrow" if d["due_tomorrow"] else "") + " -> `eztudy review`")
+    elif d["next_due"]:
+        print(f"review:   nothing due; next {d['next_due'][:10]}")
     if pg["unimported"]:
         print(f"reports:  {pg['unimported']} saved report(s) not imported -> run `eztudy report import`")
     if pg["server"]:
@@ -220,7 +228,10 @@ def cmd_status(ws: Workspace, args) -> int:
 
 
 def _progress_brief(ws: Workspace) -> dict:
-    summary = prog.summarize(prog.load_all(ws))
+    reports = prog.load_all(ws)
+    summary = prog.summarize(reports)
+    retention, max_days = srs.settings(ws.config)
+    due = srs.due_summary(srs.schedule(reports, retention=retention, max_interval=max_days))
     stored = {p.stem for p in prog.reports_dir(ws).glob("*.json")} if prog.reports_dir(ws).exists() else set()
     unimported = 0
     for p in prog.default_candidates(ws):
@@ -232,7 +243,7 @@ def _progress_brief(ws: Workspace) -> dict:
             unimported += 1
     st = serving.state_path(ws).exists() and serving.running(ws)
     return {"reports": summary["reports"], "last_session": summary["last_session"],
-            "weak_topics": summary["weak_topics"], "unimported": unimported,
+            "weak_topics": summary["weak_topics"], "unimported": unimported, "due": due,
             "server": serving.page_url(st) if st else None,
             "grading": {"pending": len(grading.jobs(ws, "job")) + len(grading.jobs(ws, "claimed")),
                         "failed": len(grading.jobs(ws, "failed"))}}
@@ -570,26 +581,31 @@ def cmd_wiki(ws: Workspace, args) -> int:
 
 
 def cmd_render(ws: Workspace, args) -> int:
+    paths = []
+    for p in args.files:
+        path = Path(p)
+        paths.append(path if path.is_absolute() or path.exists() else ws.root / p)
+    return render_files(ws, paths, args.theme, args.strict)
+
+
+def render_files(ws: Workspace, paths: list[Path], theme: str | None = None, strict: bool = False) -> int:
     rc = 0
     known = None
     if ws.db_path.exists():
         known = {r[0] for r in vectordb.connect(ws.db_path).execute("SELECT cid FROM chunks")}
     else:
         print("note: no index yet, so citation chunk ids were not checked (run `eztudy index`)", file=sys.stderr)
-    skin = args.theme or (ws.config.get("ui") or {}).get("theme")
+    skin = theme or (ws.config.get("ui") or {}).get("theme")
     if skin and skin not in rendering.SKINS:
         print(f"error: unknown theme {skin!r} in .eztudy/config.toml [ui]; choose one of {', '.join(rendering.SKINS)}", file=sys.stderr)
         return 2
-    for p in args.files:
-        path = Path(p)
-        if not path.is_absolute() and not path.exists():
-            path = ws.root / p
+    for path in paths:
         try:
             md, html, warns = rendering.render(path, known, skin)
             print(f"rendered {path.name} -> {md.name}, {html.name}")
             for w in warns:
                 print(f"warning: {path.name}: {w}", file=sys.stderr)
-            if warns and args.strict:
+            if warns and strict:
                 rc = 1
         except (rendering.StudyFormatError, FileNotFoundError) as e:
             print(f"error: {e}", file=sys.stderr)
@@ -754,8 +770,86 @@ def cmd_serve(ws: Workspace, args) -> int:
     return 0
 
 
+def _schedule(ws: Workspace, deck: str | None = None, now: str | None = None) -> list[dict]:
+    retention, max_days = srs.settings(ws.config)
+    return srs.schedule(prog.load_all(ws), srs.parse_time(now) if now else None, deck, retention, max_days)
+
+
+def _ago(days: float) -> str:
+    d = abs(days)
+    span = f"{d * 24:.0f}h" if d < 1 else f"{d:.0f}d"
+    return f"{span} overdue" if days >= 0 else f"in {span}"
+
+
+def cmd_due(ws: Workspace, args) -> int:
+    sched = _schedule(ws, args.deck, args.now)
+    items = srs.due(sched, args.days)
+    if args.topic:
+        items = [c for c in items if args.topic in c["topics"]]
+    if args.json:
+        _print_json({**srs.due_summary(sched), "items": items[: args.limit]})
+        return 0
+    if not sched:
+        print("nothing scheduled yet: finish a quiz or deck in the player (reports feed the schedule)")
+        return 0
+    summ = srs.due_summary(sched)
+    print(f"{summ['due_now']} of {summ['tracked']} reviewed items due now"
+          + (f"; {summ['due_tomorrow']} more by tomorrow" if summ["due_tomorrow"] else "")
+          + (f"; next at {summ['next_due'][:16].replace('T', ' ')}" if not summ["due_now"] and summ["next_due"] else ""))
+    for c in items[: args.limit]:
+        kind = "card" if c["kind"] == "flashcards" else "quiz"
+        print(f"  {_ago(c['overdue_days']):<13} recall {c['retrievability']:.0%}  {kind}  [{c['deck']} / {c['id']}] {c['prompt'][:80]}")
+    if len(items) > args.limit:
+        print(f"  … {len(items) - args.limit} more (--limit)")
+    if summ["due_now"]:
+        print("-> `eztudy review` builds a review session from these")
+    return 0
+
+
+def cmd_review(ws: Workspace, args) -> int:
+    now = srs.parse_time(args.now) if args.now else srs.now_utc()
+    sched = _schedule(ws, args.deck, args.now)
+    picked = srs.due(sched)
+    if args.topic:
+        picked = [c for c in picked if args.topic in c["topics"]]
+    picked.sort(key=lambda c: (c["retrievability"], c["due"]))  # least likely to be remembered first
+    picked = picked[: args.limit]
+    if not picked:
+        summ = srs.due_summary(sched)
+        print("nothing due for review" + (f"; next at {summ['next_due'][:16].replace('T', ' ')}" if summ["next_due"] else ""))
+        return 0
+    day = now.astimezone().date().isoformat()
+    decks, skipped = srs.review_decks(ws, picked, day)
+    for s in skipped:
+        print(f"skipped [{s['deck']} / {s['id']}]: {s['reason']}", file=sys.stderr)
+    if not decks:
+        print("error: none of the due items could be found in their decks under study/", file=sys.stderr)
+        return 1
+    out = Path(args.output) if args.output else ws.study / srs.REVIEW_DIR
+    out = out if out.is_absolute() else ws.root / out
+    out.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for kind, data in decks.items():
+        path = out / f"{data['id']}.json"
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        paths.append(path)
+        print(f"wrote {path.relative_to(ws.root) if path.is_relative_to(ws.root) else path} "
+              f"({len(data['items'])} {'card' if kind == 'flashcards' else 'question'}{'s' if len(data['items']) != 1 else ''})")
+    rc = render_files(ws, paths)
+    st = serving.state_path(ws).exists() and serving.running(ws)
+    for path in paths:
+        html = path.with_suffix(".html")
+        if st and html.resolve().is_relative_to(ws.study.resolve()):
+            print(f"open: {serving.page_url(st, html.resolve().relative_to(ws.root.resolve()).as_posix())}")
+    if not st:
+        rel = paths[0].with_suffix(".html")
+        print(f"-> `eztudy serve --open {rel.relative_to(ws.root) if rel.is_relative_to(ws.root) else rel}` so the results come back")
+    return rc
+
+
 def cmd_progress(ws: Workspace, args) -> int:
     summary = prog.summarize(prog.load_all(ws), args.deck)
+    summary["due"] = srs.due_summary(_schedule(ws, args.deck))
     if args.json:
         _print_json(summary)
         return 0
@@ -774,6 +868,8 @@ def cmd_progress(ws: Workspace, args) -> int:
             print(f"  [{p['deck']} / {p['id']}] missed {p['misses']}/{p['attempts']}, {flag}: {p['prompt'][:90]}")
             for w in p["wrong_answers"][:2]:
                 print(f"      picked: {w['answer'][:80]} (x{w['count']})")
+    d = summary["due"]
+    print(f"\nreview: {d['due_now']} of {d['tracked']} items due now" + (" -> `eztudy due`, `eztudy review`" if d["due_now"] else ""))
     return 0
 
 
@@ -864,6 +960,21 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--deck", help="only this deck id")
     s.add_argument("--limit", type=int, default=15, help="problem items to list (text output)")
     s.add_argument("--json", action="store_true")
+
+    s = sub.add_parser("due", help="items the spaced-repetition schedule says to review now")
+    s.add_argument("--deck", help="only this deck id")
+    s.add_argument("--topic", help="only items with this topic or tag")
+    s.add_argument("--days", type=float, default=0, help="also list items due within this many days")
+    s.add_argument("--limit", type=int, default=20)
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--now", help=argparse.SUPPRESS)
+
+    s = sub.add_parser("review", help="build and render a review quiz/deck from the items due now")
+    s.add_argument("--deck", help="only this deck id")
+    s.add_argument("--topic", help="only items with this topic or tag")
+    s.add_argument("--limit", type=int, default=20, help="most items in the session (least remembered first)")
+    s.add_argument("-o", "--output", help="directory for the review files (default: study/review/)")
+    s.add_argument("--now", help=argparse.SUPPRESS)
     return ap
 
 
@@ -871,6 +982,7 @@ COMMANDS = {
     "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
     "report": cmd_report, "progress": cmd_progress, "serve": cmd_serve,
+    "due": cmd_due, "review": cmd_review,
 }
 
 

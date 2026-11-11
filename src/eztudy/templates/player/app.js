@@ -599,7 +599,7 @@ function quiz(items) {
     };
     session.report = makeReport(session, order.map(i => {
       const it = items[i], st = states[i];
-      return { id: it.id || `q${i + 1}`, type: it.type, topic: it.topic || null, tags: it.tags || [], difficulty: it.difficulty || null,
+      return { id: it.id || `q${i + 1}`, ...(it.src ? { src: it.src } : {}), type: it.type, topic: it.topic || null, tags: it.tags || [], difficulty: it.difficulty || null,
         question: it.question, result: st.pending || !st.graded ? "pending" : st.ok ? "correct" : "wrong",
         graded: isFree(it) ? (st.pending ? "pending" : st.by || "self") : "auto",
         ...(st.feedback ? { feedback: st.feedback } : {}),
@@ -701,7 +701,9 @@ function flashcards(items) {
     delete saved.known;
   }
   const marks = saved.marks, save = () => store.set(saved);
-  let tag = "", deck = [], pos = 0, rot = 0, end = false, session = newSession(), seen = new Set();
+  // `marked`: cards marked in this session. Only those report a result: a mark left from an earlier
+  // session is not a fresh review, so it must not reach the review schedule again.
+  let tag = "", deck = [], pos = 0, rot = 0, end = false, session = newSession(), seen = new Set(), marked = new Set();
 
   menuExtras = () => h("section", {}, h("h2", {}, "Flashcards"), h("div", { class: "choices" },
     allTags.length ? h("select", { "aria-label": "Filter by tag", onchange: e => { tag = e.target.value; closeMenu(); build(); } },
@@ -710,10 +712,15 @@ function flashcards(items) {
 
   function build(onlyLearning = false) {
     deck = items.map((_, i) => i).filter(i => (!tag || (items[i].tags || []).includes(tag)) && (!onlyLearning || marks[ids[i]] === "learn"));
-    pos = 0; rot = 0; end = false; session = newSession(); seen = new Set();
+    pos = 0; rot = 0; end = false; session = newSession(); seen = new Set(); marked = new Set();
     render();
   }
   const pool = () => items.map((_, i) => i).filter(i => !tag || (items[i].tags || []).includes(tag));
+  const sessionCounts = idx => {
+    const r = { know: 0, learn: 0, unmarked: 0 };
+    for (const i of idx) r[(marked.has(ids[i]) && marks[ids[i]]) || "unmarked"]++;
+    return r;
+  };
   const counts = idx => ({ know: idx.filter(i => marks[ids[i]] === "know").length, learn: idx.filter(i => marks[ids[i]] === "learn").length });
 
   function render() {
@@ -750,8 +757,9 @@ function flashcards(items) {
       return h("button", { type: "button", class: ["dot", m === "know" ? "know" : m === "learn" ? "learn" : "", p === pos ? "cur" : ""].join(" "),
         "aria-label": `Card ${p + 1}` + (m ? (m === "know" ? ", known" : ", still learning") : ""), onclick: () => go(p) });
     }));
-    const markBtn = (kind, label, icon) => h("button", { type: "button", class: "mk " + (kind === "know" ? "yes" : "no"), "aria-pressed": String(mark === kind),
-      onclick: () => { if (marks[ids[i]] === kind) delete marks[ids[i]]; else marks[ids[i]] = kind; save(); render(); } },
+    const fresh = marked.has(ids[i]);  // an earlier session's mark shows on the dots, not as pressed
+    const markBtn = (kind, label, icon) => h("button", { type: "button", class: "mk " + (kind === "know" ? "yes" : "no"), "aria-pressed": String(fresh && mark === kind),
+      onclick: () => { if (fresh && marks[ids[i]] === kind) delete marks[ids[i]]; else marks[ids[i]] = kind; marked.add(ids[i]); save(); render(); } },
       h("span", { class: "ring" }, icon), h("span", {}, label));
     stage.append(
       h("div", { class: "fc-top" }, dots, tally),
@@ -771,8 +779,8 @@ function flashcards(items) {
     const c = counts(deck), unmarked = deck.length - c.know - c.learn;
     const reviewed = deck.filter(i => seen.has(i));
     const r = reviewed.length ? makeReport(session, reviewed.map(i => ({
-      id: ids[i], tags: items[i].tags || [], front: items[i].front, correct_answer: items[i].back,
-      result: marks[ids[i]] || "unmarked" })), { ...counts(reviewed), unmarked: reviewed.length - counts(reviewed).know - counts(reviewed).learn }) : null;
+      id: ids[i], ...(items[i].src ? { src: items[i].src } : {}), tags: items[i].tags || [], front: items[i].front, correct_answer: items[i].back,
+      result: (marked.has(ids[i]) && marks[ids[i]]) || "unmarked" })), sessionCounts(reviewed)) : null;
     stage.append(...[h("div", { class: "fc-top" }, h("span"), tally),
       h("div", { class: "score" }, h("span", { class: "big" }, deck.length ? `✓ ${c.know}` : "0"),
         h("span", { class: "of" }, deck.length ? `known · ${c.learn} still learning${unmarked ? ` · ${unmarked} unmarked` : ""}` : "No cards match this filter.")),

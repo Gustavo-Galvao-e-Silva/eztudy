@@ -135,6 +135,15 @@ def load_all(ws: Workspace) -> list[dict]:
     return sorted(reps, key=lambda r: r["finished_at"])
 
 
+def item_key(rep: dict, it: dict) -> tuple[str, str]:
+    """(deck id, item id) that history is kept under. An item copied into a review deck carries
+    `src: {deck, id}` pointing at the original, so its results count toward that item."""
+    src = it.get("src")
+    if isinstance(src, dict) and isinstance(src.get("deck"), str) and isinstance(src.get("id"), str) and src["deck"] and src["id"]:
+        return src["deck"], src["id"]
+    return rep["deck"]["id"], it["id"]
+
+
 def _topics(it: dict) -> list[str]:
     ts = [it["topic"]] if isinstance(it.get("topic"), str) and it["topic"] else []
     ts += [t for t in it.get("tags") or [] if isinstance(t, str) and t and t not in ts]
@@ -149,22 +158,32 @@ def _status(mastery: float, seen: int) -> str:
     return "learning"
 
 
+def filter_deck(reports: list[dict], deck: str) -> list[dict]:
+    """Reports narrowed to items of one deck, including copies answered in review decks."""
+    out = []
+    for r in reports:
+        items = [it for it in r["items"] if item_key(r, it)[0] == deck]
+        if items:
+            out.append({**r, "items": items})
+    return out
+
+
 def summarize(reports: list[dict], deck: str | None = None) -> dict:
     """Fold reports (oldest first) into per-topic mastery and problem items."""
     if deck:
-        reports = [r for r in reports if r["deck"]["id"] == deck]
+        reports = filter_deck(reports, deck)
     obs: dict[str, list[float]] = defaultdict(list)  # topic -> scores, oldest first
     items: dict[tuple[str, str], dict] = {}
     for rep in reports:
-        did = rep["deck"]["id"]
         for it in rep["items"]:
             score = SCORE.get(it["result"])
             if score is None:
                 continue
             for t in _topics(it):
                 obs[t].append(score)
-            rec = items.setdefault((did, it["id"]), {
-                "deck": did, "id": it["id"], "deck_path": rep["deck"].get("path"),
+            did, iid = item_key(rep, it)
+            rec = items.setdefault((did, iid), {
+                "deck": did, "id": iid, "deck_path": rep["deck"].get("path") if did == rep["deck"]["id"] else None,
                 "prompt": it.get("question") or it.get("front") or "", "topics": _topics(it),
                 "attempts": 0, "misses": 0, "history": [], "wrong_answers": Counter()})
             rec["attempts"] += 1
