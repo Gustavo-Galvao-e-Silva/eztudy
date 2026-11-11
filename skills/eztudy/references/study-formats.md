@@ -47,7 +47,7 @@ also accepted.
 }
 ```
 - `answer`: 0-based option index (`mcq`), list of indices (`multi`), boolean (`true_false`), model answer string (`short`),
-  model solution (`code`, see below).
+  model solution (`code`, see below); for `numeric`, `cloze`, `ordering` and `matching` see "Exactly-checked items".
 - MCQ: 4 options, one unambiguously correct; distractors plausible, similar length, drawn from
   related concepts in the sources; avoid "all/none of the above". Vary the correct position.
 - `explanation`: why the answer is right *and* why the tempting distractor is wrong.
@@ -91,6 +91,33 @@ leaves the editor), local completions, conservative live lint, and an optional *
 - Use `code` when writing code is the skill being tested; use `short` for explanations that may quote code.
 - Grading: served by `eztudy serve`, short and code answers are graded by the agent when the quiz ends (see
   below). Opened from disk they are self-graded ("I got it" / "I missed it"). Reports include the code and ticked criteria.
+
+### Exactly-checked items (`numeric`, `cloze`, `ordering`, `matching`)
+Graded in the page on **Confirm**: instant, offline, free, and never wrong. **Prefer them to `mcq` whenever the answer
+is a number, a key term, a sequence or a pairing**: the student has to produce the answer instead of recognising it.
+```json
+{"id": "n1", "type": "numeric", "question": "g at sea level?", "answer": 9.81, "tolerance": 0.05, "unit": "m/s²", "...": "..."}
+{"id": "c1", "type": "cloze", "question": "Complete the sentence.", "text": "ATP is made in the ___ by ___.",
+ "answer": [["mitochondria", "mitochondrion"], {"accept": ["oxidative phosphorylation"], "regex": "ox(idative)? ?phos.*"}]}
+{"id": "c2", "type": "cloze", "question": "Fill in the loop.", "text": "for i in ___(n):\n    print(i)", "answer": ["range"], "monospace": true}
+{"id": "o1", "type": "ordering", "question": "Order the phases of mitosis.", "answer": ["Prophase", "Metaphase", "Anaphase", "Telophase"]}
+{"id": "m1", "type": "matching", "question": "Match each organelle to its job.",
+ "answer": [["Mitochondrion", "Makes ATP"], ["Ribosome", "Builds proteins"]], "distractors": ["Stores lipids"]}
+```
+- `numeric`: `answer` is a number. `tolerance` is absolute (`0.05`) or relative (`"2%"`); without it the student must
+  match to the answer's last decimal place (9.81 accepts 9.805–9.815), so set it from the source's precision. `unit` is
+  shown next to the box; the student types only the number. Accepted input: `3,5` or `3.5`, `1e-3`, `3/4`, `1 000`
+  (a comma followed by exactly 3 digits is a thousands separator).
+- `cloze`: `text` is the passage (Markdown inline), one `___` per blank; `answer[i]` is an accepted string, a list of
+  them, or `{"accept": [...], "regex"?: "...", "case_sensitive"?: false}` (the regex must match the whole input).
+  Matching ignores case, accents, extra spaces and surrounding punctuation. Blank the key terms, not filler words; 1–3
+  blanks per item; list every common spelling and synonym. `"monospace": true` shows the passage as code.
+- `ordering`: `answer` is the correct order (2–10 unique entries). The player shuffles it (never already solved) and
+  the student moves rows up and down. Use real sequences: steps of a process, events in time, algorithm passes.
+- `matching`: `answer` pairs `[left, right]`; lefts are unique, a right may repeat. Each left gets a dropdown of all
+  rights plus `distractors` (add 1–2 plausible ones so the last pick isn't free). Keep it to 3–6 pairs.
+- `result` is all-or-nothing (mastery stays simple), and feedback marks each blank / position / pair; the report adds
+  `partial: {"right": 2, "total": 3}`. These are always `graded: "auto"`, never sent to a grader.
 
 ## Flashcards — `study/flashcards/<slug>.json`
 ```json

@@ -66,7 +66,7 @@ def test_aliases_match_the_editor_bundle():
 
 def test_vendor_only_for_code_quizzes_and_only_needed_languages():
     plain = to_html(quiz(MCQ))
-    assert '".cm-scroller":{' not in plain and len(plain.encode()) < 140_000
+    assert '".cm-scroller":{' not in plain and len(plain.encode()) < 150_000
     assert not re.search(r"keydown|keyup|keypress", plain)
     assert code_langs(quiz(MCQ)) == []
     data = quiz(MCQ, code_item(), code_item(id="c2", language="py"), code_item(id="c3", language="Java"), code_item(id="c4", language="lisp"))
