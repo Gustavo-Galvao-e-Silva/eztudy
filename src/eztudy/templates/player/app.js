@@ -202,13 +202,35 @@ const explain = item => {
   el.classList.add("expl");
   return el;
 };
+// Where a citation opens (window.EZTUDY_LINKS from `eztudy render`/`serve`): served, through the local server
+// (PDFs at the page, other files in a text view scrolled to the lines/page/slide); from disk, the file itself.
+const LINKS = window.EZTUDY_LINKS || null;
+// Mirrors cite_key() in sourcelinks.py.
+const citeKey = x => typeof x === "string" ? x : x.cid || (x.source ? `${x.source}#${x.location || ""}` : null);
+const citeHref = x => {
+  const key = citeKey(x);
+  const l = LINKS && key && LINKS.map[key];
+  if (!l) return null;
+  const path = l.path.split("/").map(encodeURIComponent).join("/");
+  const pdf = l.type === "pdf";
+  if (!window.EZTUDY_SERVER) return LINKS.base + path + (pdf && l.page ? `#page=${l.page}` : "");
+  const t = `?t=${encodeURIComponent(window.EZTUDY_SERVER.token)}`;
+  if (pdf) return `${window.EZTUDY_SERVER.url || ""}/source/${path}${t}${l.page ? `#page=${l.page}` : ""}`;
+  const frag = l.line ? `&lines=${l.line}-${l.end || l.line}#L${l.line}` : l.page ? `#page-${l.page}` : l.slide ? `#slide-${l.slide}` : "";
+  return `${window.EZTUDY_SERVER.url || ""}/source/${path}${t}${frag}`;
+};
 const citeList = item => {
   const c = item.citations || [];
   if (!c.length) return null;
-  return h("div", { class: "cites", "aria-label": "Sources" }, c.map((x, k) => typeof x === "string"
-    ? h("span", { class: "cite" }, h("span", { class: "n" }, k + 1), h("span", { class: "src" }, x))
-    : h("span", { class: "cite", title: x.cid ? "chunk " + x.cid : null },
-        h("span", { class: "n" }, k + 1), h("span", { class: "src" }, x.source || x.cid || ""), x.location ? h("span", { class: "loc" }, x.location) : null)));
+  return h("div", { class: "cites", "aria-label": "Sources" }, c.map((x, k) => {
+    const href = citeHref(x);
+    const tag = href ? "a" : "span";
+    const attrs = href ? { class: "cite link", href, target: "_blank", rel: "noopener", title: "Open the source" + (typeof x === "object" && x.cid ? ` (chunk ${x.cid})` : "") }
+      : { class: "cite", title: typeof x === "object" && x.cid ? "chunk " + x.cid : null };
+    return typeof x === "string"
+      ? h(tag, attrs, h("span", { class: "n" }, k + 1), h("span", { class: "src" }, x))
+      : h(tag, attrs, h("span", { class: "n" }, k + 1), h("span", { class: "src" }, x.source || x.cid || ""), x.location ? h("span", { class: "loc" }, x.location) : null);
+  }));
 };
 
 /* ---------------- options menu ---------------- */

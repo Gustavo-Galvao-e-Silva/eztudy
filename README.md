@@ -61,6 +61,9 @@ The agent opens the quiz in your browser through `eztudy serve` (localhost only)
 screen fills in: short and code answers are graded against the answer key, with feedback, and the report is saved to the
 notebook so the next quiz or deck targets what you missed.
 
+Each citation under an answer is a link: it opens the source at the cited page (PDFs) or lines (code and
+text), so you can check the answer against your material in one click.
+
 You can also open `study/quizzes/*.html` straight from disk: it works fully offline, you grade written answers
 yourself, and **Save report** + "I finished the quiz" hands the session to the agent.
 

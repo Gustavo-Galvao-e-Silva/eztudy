@@ -26,6 +26,7 @@ from pathlib import Path
 from . import grading
 from . import progress as prog
 from . import render as rendering
+from . import sourcelinks
 from .workspace import Workspace
 
 MAX_BODY = 1_000_000
@@ -120,7 +121,7 @@ class Server(ThreadingHTTPServer):
             self.server_close()
 
 
-def _current(page_path: Path) -> str:
+def _current(page_path: Path, ws: Workspace | None = None) -> str:
     """The page rendered in memory from its JSON with the current player (keeping its skin), so a page written by
     an older eztudy still gets served mode and its fixes. Falls back to the file as written."""
     page = page_path.read_text()
@@ -128,7 +129,9 @@ def _current(page_path: Path) -> str:
     if src.is_file():
         m = re.search(r'<html[^>]*data-skin="([\w-]+)"', page)
         try:
-            return rendering.to_html(rendering.load(src), m.group(1) if m and m.group(1) in rendering.SKINS else None)
+            data = rendering.load(src)
+            links = rendering.offline_links(ws, data, page_path) if ws else None
+            return rendering.to_html(data, m.group(1) if m and m.group(1) in rendering.SKINS else None, links)
         except (rendering.StudyFormatError, ValueError, OSError):
             pass
     return page
@@ -189,12 +192,46 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", ""):
             self.server.page_seen("")
             return self._send(200, self._index(), "text/html")
+        if path.startswith("/source/"):
+            return self._source(path.removeprefix("/source/"), query)
         target = (ws.root / path.lstrip("/")).resolve()
         study = ws.study.resolve()
         if target.suffix != ".html" or not target.is_relative_to(study) or not target.is_file():
             return self._send(404, {"error": "not found"})
         self.server.page_seen("")
-        return self._send(200, inject(_current(target), self.server.state()), "text/html")
+        return self._send(200, inject(_current(target, ws), self.server.state()), "text/html")
+
+    def _source(self, rel: str, query: dict):
+        """A cited source: PDFs as themselves (the browser's viewer opens `#page=N`); everything else as an
+        escaped text view with the cited lines/page/slide anchored, never as raw HTML or script."""
+        ws = self.server.ws
+        sources = ws.sources.resolve()
+        target = (sources / rel).resolve()
+        if not target.is_relative_to(sources) or not target.is_file():
+            return self._send(404, {"error": "not found"})
+        rel = target.relative_to(sources).as_posix()
+        if target.suffix.lower() == ".pdf" and "view" not in query:
+            body = target.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Disposition", "inline")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            return self.wfile.write(body)
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?", (query.get("lines") or [""])[0])
+        page = sourcelinks.viewer(ws, rel, (int(m.group(1)), int(m.group(2) or m.group(1))) if m else None)
+        if page is None:
+            return self._send(404, {"error": "source not readable (run `eztudy sync`)"})
+        body = page.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         path, query = self._route()

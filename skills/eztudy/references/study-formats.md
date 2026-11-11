@@ -21,6 +21,12 @@ works offline, saves progress in the browser). Everything else is Markdown.
 `cid` and `location` come straight from `eztudy search` output. A plain string (`"cells.pdf p.4"`) is
 also accepted.
 
+In the player each citation is a link to its source. It's found by the `cid`'s file hash (which survives moves), then
+the path under `sources/`, then a unique file name. From disk it opens the file (PDFs at `#page=N`). Served by
+`eztudy serve`, PDFs open at the page, and other files open as a text view with the cited lines, page or slide in view.
+`location` is read as `page N` / `pages N-M` / `p.N`, `slide N` or `lines N-M`, and the `path:N-M` form of code
+citations works too. Keep `source` the path as `eztudy search` gives it.
+
 ## Quiz — `study/quizzes/<slug>.json`
 ```json
 {

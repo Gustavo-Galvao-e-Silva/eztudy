@@ -38,7 +38,8 @@ eztudy wiki cite <path|cid>...     # ready-to-paste `sources:` frontmatter (path
 eztudy render study/quizzes/x.json [...] [--strict] [--theme focus|editorial|terminal|system7|typewriter]
                                    # validate + write x.md and an offline, click-only x.html player
                                    # (`code` items get a real code editor with completions, lint, Vim keys);
-                                   # warns on citation cids not in the index (--strict: exit 1)
+                                   # warns on citation cids not in the index (--strict: exit 1);
+                                   # citations become links that open the source at the cited page/lines
 eztudy serve --open study/quizzes/x.html   # serve study/ on localhost and open the page (idempotent; run in background)
 eztudy report wait [--timeout S]   # block until a served quiz is finished: prints its grades, or a packet for you to grade (run in background)
 eztudy report grade <session> -    # apply your verdicts (JSON on stdin); the student's page shows them at once
