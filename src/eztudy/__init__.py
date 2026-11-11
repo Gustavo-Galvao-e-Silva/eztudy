@@ -1,3 +1,3 @@
 """eztudy: local NotebookLM-style study notebooks for agents."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

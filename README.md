@@ -61,6 +61,10 @@ The agent opens the quiz in your browser through `eztudy serve` (localhost only)
 screen fills in: short and code answers are graded against the answer key, with feedback, and the report is saved to the
 notebook so the next quiz or deck targets what you missed.
 
+Every answer also feeds a spaced-repetition schedule (FSRS) across all your quizzes and flashcards: a miss comes
+back the next day, and each success pushes the item further out. `eztudy status` shows how many are due, and
+`eztudy review` (or asking the agent to "review what's due") turns them into one review session.
+
 Each citation under an answer is a link: it opens the source at the cited page (PDFs) or lines (code and
 text), so you can check the answer against your material in one click.
 
@@ -84,6 +88,8 @@ eztudy serve [--open x.html]      serve study/ on localhost: reports post themse
 eztudy report wait | grade        agent side of grading (wait for a finished quiz, apply verdicts)
 eztudy report import [files|-]    store reports saved by the player (scans study/ and ~/Downloads)
 eztudy progress [--json]          mastery by topic + problem items across all sessions
+eztudy due [--days N] [--json]    items the spaced-repetition schedule says to review now
+eztudy review [--limit 20]        build + render a review quiz/deck from the due items (study/review/)
 ```
 
 ## Layout of a notebook

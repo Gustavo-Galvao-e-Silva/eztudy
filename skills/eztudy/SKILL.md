@@ -44,7 +44,9 @@ eztudy serve --open study/quizzes/x.html   # serve study/ on localhost and open 
 eztudy report wait [--timeout S]   # block until a served quiz is finished: prints its grades, or a packet for you to grade (run in background)
 eztudy report grade <session> -    # apply your verdicts (JSON on stdin); the student's page shows them at once
 eztudy report import [files… | -]  # store performance reports the player saved (default: scan study/ + ~/Downloads)
-eztudy progress [--deck ID] [--json]   # mastery by topic (weak/learning/strong) + problem items, from all reports
+eztudy progress [--deck ID] [--json]   # mastery by topic (weak/learning/strong) + problem items + `due` counts
+eztudy due [--deck ID] [--topic T] [--days N] [--json]   # items the spaced-repetition schedule says to review now
+eztudy review [--limit 20] [--deck ID] [--topic T]       # write + render study/review/review-<date>.json (and -cards.json) from due items
 ```
 
 `search --json` prints a list of hits, best first:
@@ -108,6 +110,9 @@ Read `references/study-formats.md` for schemas and quality rules. Then:
    never the identical question), about a third on `learning` topics, and the rest on topics not practised yet or
    `strong` ones. Target each misconception from `learner.md` with a question whose distractor is that
    misconception. Tell the user what you targeted and why.
+   **Due items come first:** if `progress --json` → `due.due_now` is non-zero, offer `eztudy review` (workflow 7)
+   before writing new material, and weight new items toward the topics of `eztudy due --json` items.
+   Give every item a stable, unique `id`: the review schedule follows items by id.
    **Pick the item type by the answer:** a number → `numeric`, a key term or code token → `cloze`, a sequence →
    `ordering`, pairs → `matching` (all checked exactly in the page); `mcq` / `multi` / `true_false` for judgements
    between alternatives; `short` / `code` only when the student must explain or write something open (graded by a model).
@@ -163,7 +168,8 @@ finished, pastes a report, or `status` shows unimported reports:
    - [[Energy]]: 92%
    ```
    Mark a misconception resolved once its items are answered correctly in two later sessions. Numbers come
-   from `eztudy progress`; never invent them. `eztudy wiki log "progress | <deck>"`.
+   from `eztudy progress`; never invent them. Add a `## Review` line with `due.due_now` and the next due date.
+   `eztudy wiki log "progress | <deck>"`.
 5. Tell the user in two or three lines what went well, what to focus on, and offer a tailored quiz or deck
    (workflow 3).
 
@@ -190,6 +196,20 @@ because the student is on the results screen watching "Grading…":
    `eztudy progress`). Start it again only when you open another quiz or the user asks.
 If nobody can grade (no headless grader and no agent waiting, or both failed), after about 3 minutes the page
 lets the student grade themselves.
+
+### 7. Review what's due (spaced repetition)
+Every imported report feeds an FSRS schedule over all quiz items and flashcards, derived from the reports each
+time (nothing to maintain). A miss comes back within a day; each success pushes the item further out. When the
+user asks what to study, says "review", or `status` shows `review: N due now`:
+1. `eztudy due` (or `--json`) to see what's due and why (recall %, overdue by).
+2. `eztudy review` copies the due items, least remembered first, out of their source decks into
+   `study/review/review-<date>.json` (quiz) and `review-<date>-cards.json` (flashcards) and renders them. Each copy
+   has `src: {deck, id}`, so its result counts toward the original item. Don't write review decks by hand.
+   Items whose deck or id disappeared are skipped with a note: tell the user.
+3. Open the page as in workflow 3 step 5 (`serve --open`, `report wait` in the background), then workflow 5.
+If nothing is due, say when the next item is due and offer new material (workflow 3) instead.
+`[review] retention = 0.9` (0.5–0.99; higher means more frequent reviews) and `max_interval_days = 365` in
+`.eztudy/config.toml` tune the schedule.
 
 ## Rules
 - `sources/` content is the user's: never edit file contents, never delete without explicit permission.
