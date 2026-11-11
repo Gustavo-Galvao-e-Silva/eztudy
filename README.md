@@ -65,6 +65,9 @@ Every answer also feeds a spaced-repetition schedule (FSRS) across all your quiz
 back the next day, and each success pushes the item further out. `eztudy status` shows how many are due, and
 `eztudy review` (or asking the agent to "review what's due") turns them into one review session.
 
+Each citation under an answer is a link: it opens the source at the cited page (PDFs) or lines (code and
+text), so you can check the answer against your material in one click.
+
 You can also open `study/quizzes/*.html` straight from disk: it works fully offline, you grade written answers
 yourself, and **Save report** + "I finished the quiz" hands the session to the agent.
 

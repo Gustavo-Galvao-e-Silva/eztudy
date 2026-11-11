@@ -332,6 +332,10 @@ pre.cloze .blank { font-family: var(--f-mono, ui-monospace, monospace); }
 .cite .n { display: none; }
 .cite .src { overflow-wrap: anywhere; }
 .cite .loc { color: var(--muted); }
+a.cite { color: inherit; text-decoration: none; cursor: pointer; }
+a.cite:hover { border-color: var(--accent, currentColor); }
+a.cite:hover .src { text-decoration: underline; text-underline-offset: 2px; }
+a.cite:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; }
 .rich { white-space: pre-wrap; overflow-wrap: anywhere; }
 .rich > * { margin: 0; }
 .rich > * + * { margin-top: .6em; }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 from importlib import resources
 from pathlib import Path
@@ -326,15 +327,16 @@ def _vendor(langs: list[str]) -> str:
     return f"<script>\n{js}\n</script>"
 
 
-def to_html(data: dict, skin: str | None = None) -> str:
+def to_html(data: dict, skin: str | None = None, links: dict | None = None) -> str:
     """One self-contained offline page: base layout + every skin (switchable in the page) + the app.
-    Quizzes with `code` items also inline the CodeMirror editor and only the language packs they use."""
+    Quizzes with `code` items also inline the CodeMirror editor and only the language packs they use.
+    `links` ({"base": relative URL of sources/, "map": sourcelinks.links(...)}) makes citations clickable."""
     skin = skin or DEFAULT_SKIN
     if skin not in SKINS:
         raise StudyFormatError(f"unknown theme {skin!r}; choose one of {', '.join(SKINS)}")
     css = "\n".join([_player("base.css")] + [_player(f"skins/{s}.css") for s in SKINS])
-    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/").replace("<!--", "<\\!--")
-    return (
+    payload = _script_json(data)
+    page = (
         _player("shell.html")
         .replace("__EZTUDY_SKIN__", skin)
         .replace("__EZTUDY_TITLE__", html.escape(data["title"]))
@@ -343,13 +345,28 @@ def to_html(data: dict, skin: str | None = None) -> str:
         .replace("/*__EZTUDY_JS__*/", _player("checks.js") + "\n" + _player("app.js"))
         .replace("/*__EZTUDY_DATA__*/null", payload)
     )
+    if links and links.get("map"):
+        page = page.replace("<script>", f"<script>window.EZTUDY_LINKS = {_script_json(links)};</script>\n<script>", 1)
+    return page
 
 
-def render(path: Path, known_cids: set[str] | None = None, skin: str | None = None) -> tuple[Path, Path, list[str]]:
-    """Validate and write .md + .html. Returns (md, html, warnings); citation checks need `known_cids`."""
+def offline_links(ws, data: dict, html_path: Path) -> dict:
+    from .sourcelinks import links
+
+    base = Path(os.path.relpath(ws.sources.resolve(), html_path.parent.resolve())).as_posix().rstrip("/") + "/"
+    return {"base": base, "map": links(ws, data)}
+
+
+def _script_json(obj) -> str:
+    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/").replace("<!--", "<\\!--")
+
+
+def render(path: Path, known_cids: set[str] | None = None, skin: str | None = None, ws=None) -> tuple[Path, Path, list[str]]:
+    """Validate and write .md + .html. Returns (md, html, warnings); citation checks need `known_cids`.
+    With the notebook `ws`, citations in the page link to their source files (relative, so it works offline)."""
     data = load(path)
     warns = id_warnings(data) + (unknown_citations(data, known_cids) if known_cids is not None else [])
     md_path, html_path = path.with_suffix(".md"), path.with_suffix(".html")
     md_path.write_text(to_markdown(data))
-    html_path.write_text(to_html(data, skin))
+    html_path.write_text(to_html(data, skin, offline_links(ws, data, html_path) if ws else None))
     return md_path, html_path, warns

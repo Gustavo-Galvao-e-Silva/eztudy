@@ -601,7 +601,7 @@ def render_files(ws: Workspace, paths: list[Path], theme: str | None = None, str
         return 2
     for path in paths:
         try:
-            md, html, warns = rendering.render(path, known, skin)
+            md, html, warns = rendering.render(path, known, skin, ws)
             print(f"rendered {path.name} -> {md.name}, {html.name}")
             for w in warns:
                 print(f"warning: {path.name}: {w}", file=sys.stderr)
