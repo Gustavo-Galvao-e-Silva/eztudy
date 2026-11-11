@@ -70,3 +70,14 @@ def test_player_includes_checks_once():
 def test_answer_checks_in_node():
     r = subprocess.run(["node", "tests/checks.test.mjs"], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_option_shuffle_flags_and_player():
+    from eztudy.render import validate
+
+    item = {"id": "q1", "type": "mcq", "question": "?", "options": ["a", "b"], "answer": 0, "citations": ["c"]}
+    assert validate({"type": "quiz", "title": "Q", "items": [{**item, "shuffle": False}]}) == []
+    assert any("`shuffle`" in e for e in validate({"type": "quiz", "title": "Q", "items": [{**item, "shuffle": "no"}]}))
+    assert any("`shuffle_options`" in e for e in validate({"type": "quiz", "title": "Q", "shuffle_options": 0, "items": [item]}))
+    page = to_html({"type": "quiz", "title": "Q", "items": [item]})
+    assert "function optionOrder" in page and "st.perm ||=" in page

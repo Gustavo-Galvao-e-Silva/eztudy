@@ -279,7 +279,7 @@ function quiz(items) {
   const instant = DATA.instant_feedback === true;
   let order = items.map((_, i) => i), pos = 0, states = {}, session = newSession();
   const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: null, ticks: new Set(),
-    pending: false, by: null, feedback: null, met: null, inp: [], order: null, rights: null, check: null });
+    pending: false, by: null, feedback: null, met: null, inp: [], order: null, rights: null, check: null, perm: null });
   // Served: short/code answers are graded by the agent at the end instead of "I got it" / "I missed it".
   let agentGrading = !!SERVER, gradeNote = null;
   const isFree = it => it.type === "short" || it.type === "code";
@@ -393,7 +393,10 @@ function quiz(items) {
     }
 
     const opts = optionsOf(it), right = correctIdx(it);
-    const list = h("div", { class: "opts", role: multi ? "group" : "radiogroup", "aria-labelledby": "qh" }, opts.map((o, i) => {
+    // A new display order per attempt (states reset on restart); true/false and `"shuffle": false` keep the author's.
+    st.perm ||= it.type === "true_false" || it.shuffle === false || DATA.shuffle_options === false ? opts.map((_, i) => i) : optionOrder(opts);
+    const list = h("div", { class: "opts", role: multi ? "group" : "radiogroup", "aria-labelledby": "qh" }, st.perm.map(i => {
+      const o = opts[i];
       const sel = st.sel.has(i);
       let cls = "opt" + (multi ? " multi" : ""), flag = h("span");
       if (st.graded) {

@@ -43,6 +43,8 @@ def validate(data: dict) -> list[str]:
         errs.append("missing `title`")
     if "instant_feedback" in data and not isinstance(data["instant_feedback"], bool):
         errs.append("`instant_feedback` must be true or false")
+    if "shuffle_options" in data and not isinstance(data["shuffle_options"], bool):
+        errs.append("`shuffle_options` must be true or false")
     items = data.get("items")
     if not isinstance(items, list) or not items:
         return errs + ["`items` must be a non-empty list"]
@@ -70,6 +72,8 @@ def validate(data: dict) -> list[str]:
                     errs.append(f"{where}: missing `{k}`")
             continue
         t = it.get("type")
+        if "shuffle" in it and not isinstance(it["shuffle"], bool):
+            errs.append(f"{where}: `shuffle` must be true or false")
         if t not in QUIZ_TYPES:
             errs.append(f"{where}: `type` must be one of {sorted(QUIZ_TYPES)}")
             continue
