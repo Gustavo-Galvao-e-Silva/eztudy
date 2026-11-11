@@ -39,6 +39,9 @@ eztudy render study/quizzes/x.json [...] [--strict] [--theme focus|editorial|ter
                                    # validate + write x.md and an offline, click-only x.html player
                                    # (`code` items get a real code editor with completions, lint, Vim keys);
                                    # warns on citation cids not in the index (--strict: exit 1)
+eztudy serve --open study/quizzes/x.html   # serve study/ on localhost and open the page (idempotent; run in background)
+eztudy report wait [--timeout S]   # block until a served quiz is finished: prints its grades, or a packet for you to grade (run in background)
+eztudy report grade <session> -    # apply your verdicts (JSON on stdin); the student's page shows them at once
 eztudy report import [files… | -]  # store performance reports the player saved (default: scan study/ + ~/Downloads)
 eztudy progress [--deck ID] [--json]   # mastery by topic (weak/learning/strong) + problem items, from all reports
 ```
@@ -111,7 +114,11 @@ Read `references/study-formats.md` for schemas and quality rules. Then:
 4. Write `study/<kind>/<slug>.json`, then `eztudy render` it (validates; writes `.md` + `.html`).
    Non-interactive kinds (guide, briefing, FAQ, glossary, timeline, mind map, audio script) are
    plain Markdown in `study/guides/` etc. — still cited.
-5. Tell the user the `.html` path to open in a browser.
+5. Open it for the student and stand by to grade (workflow 6): run `eztudy serve --open study/quizzes/<slug>.html`
+   **in the background** (if a server is already up it just opens the page; it exits by itself about 2 minutes
+   after the last quiz tab closes), then `eztudy report wait` **in the background**, once per quiz you open. Tell the
+   user the quiz is open and that their written answers are graded when they finish. If you can't run background
+   commands, give them the `.html` path instead.
 
 ### 4. Reorganize sources / reindex
 You may move, rename, and group files in `sources/` to improve organization (e.g. by course/topic),
@@ -128,7 +135,8 @@ Fix a bad source title (e.g. a web PDF titled with its URL) in `.eztudy/config.t
 ```
 
 ### 5. Learn from a finished session (performance reports)
-When the student finishes a quiz or deck, the player offers **Save report** (downloads
+Served pages (workflow 6) send their report on their own; it is already imported. Opened from disk, the
+player instead offers **Save report** (downloads
 `<deck>.<time>.eztudy-report.json`) and **Copy report** (JSON to paste into chat). When the user says they
 finished, pastes a report, or `status` shows unimported reports:
 1. `eztudy report import` (scans `study/` and `~/Downloads`), or `eztudy report import <file>`. For pasted JSON, pipe
@@ -154,6 +162,30 @@ finished, pastes a report, or `status` shows unimported reports:
    from `eztudy progress`; never invent them. `eztudy wiki log "progress | <deck>"`.
 5. Tell the user in two or three lines what went well, what to focus on, and offer a tailored quiz or deck
    (workflow 3).
+
+### 6. Grade a served quiz (short and code answers)
+The server grades short and code answers itself with headless `claude -p` on a cheap model (haiku by default;
+`[grading] model = "sonnet"` in `.eztudy/config.toml` to change, `fallback = "none"` to turn it off). It sends only
+the question, the student's answer, the key and the rubric, with no tools. So `eztudy report wait` usually returns
+a one-line summary ("graded by claude: q2 correct, …"): continue with workflow 5 from step 2.
+
+It returns a **grading packet** instead when there is no headless grader or it failed. Then you grade, promptly,
+because the student is on the results screen watching "Grading…":
+1. Read the printed packet: per item the question, `student_answer`, `model_answer`, `explanation`,
+   `citations` and, for code, the `rubric` (with what the student ticked). Check a cited chunk
+   (`eztudy show <cid>`) only when the model answer doesn't settle it.
+2. Grade fairly: `correct` when the core idea is right, even in other words or with another valid approach.
+   For code, mark each rubric criterion `met` and give `points`; correct means about 70% of the points and no
+   serious bug. Feedback is one or two sentences to the student: what was right, then the specific gap.
+3. Pipe the verdicts in (one per item; JSON via heredoc):
+   `eztudy report grade <session> - <<'EOF'` + `{"items": [{"id": "q2", "result": "correct", "feedback": "…"},
+   {"id": "q3", "result": "wrong", "points": 1, "feedback": "…", "rubric": [{"index": 0, "met": false, "note": "…"}]}]}`.
+   A rejected verdict says what to fix; resend.
+4. Run workflow 5 from step 2 (the report is already imported). Don't re-arm `eztudy report wait` on your own:
+   each wake-up costs your tokens, and retries are graded without you anyway (they show up in `eztudy status` and
+   `eztudy progress`). Start it again only when you open another quiz or the user asks.
+If nobody can grade (no headless grader and no agent waiting, or both failed), after about 3 minutes the page
+lets the student grade themselves.
 
 ## Rules
 - `sources/` content is the user's: never edit file contents, never delete without explicit permission.

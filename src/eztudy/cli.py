@@ -11,10 +11,12 @@ from pathlib import Path
 
 from . import chunk as chunking
 from . import extract as extracting
+from . import grading
 from . import manifest as mf
 from . import origins
 from . import progress as prog
 from . import render as rendering
+from . import serve as serving
 from . import vectordb, wiki
 from .workspace import Workspace, WorkspaceError, find_workspace
 
@@ -206,6 +208,12 @@ def cmd_status(ws: Workspace, args) -> int:
               + (f"; weak: {', '.join(pg['weak_topics'][:5])}" if pg["weak_topics"] else "") + " -> `eztudy progress`")
     if pg["unimported"]:
         print(f"reports:  {pg['unimported']} saved report(s) not imported -> run `eztudy report import`")
+    if pg["server"]:
+        print(f"server:   {pg['server']}")
+    g = pg["grading"]
+    if g["pending"] or g["failed"]:
+        print(f"grading:  {g['pending']} waiting, {g['failed']} failed"
+              + (" -> run `eztudy report wait` to grade them" if g["pending"] else ""))
     if status["study"]:
         print(f"study:    {len(status['study'])} files in study/")
     return 0
@@ -222,8 +230,12 @@ def _progress_brief(ws: Workspace) -> dict:
             continue
         if not prog.validate(rep) and prog.report_key(rep) not in stored:
             unimported += 1
+    st = serving.state_path(ws).exists() and serving.running(ws)
     return {"reports": summary["reports"], "last_session": summary["last_session"],
-            "weak_topics": summary["weak_topics"], "unimported": unimported}
+            "weak_topics": summary["weak_topics"], "unimported": unimported,
+            "server": serving.page_url(st) if st else None,
+            "grading": {"pending": len(grading.jobs(ws, "job")) + len(grading.jobs(ws, "claimed")),
+                        "failed": len(grading.jobs(ws, "failed"))}}
 
 
 def cmd_sync(ws: Workspace, args) -> int:
@@ -589,6 +601,10 @@ def cmd_render(ws: Workspace, args) -> int:
 
 
 def cmd_report(ws: Workspace, args) -> int:
+    if args.report_cmd == "wait":
+        return _report_wait(ws, args)
+    if args.report_cmd == "grade":
+        return _report_grade(ws, args)
     if args.report_cmd != "import":
         return 2
     sources: list[tuple[str, str]] = []
@@ -630,6 +646,112 @@ def cmd_report(ws: Workspace, args) -> int:
     print(f"done: {len(added)} new, {dup} already imported, {bad} rejected"
           + (" -> run `eztudy progress` and update wiki/learner.md" if added else ""))
     return 1 if bad else 0
+
+
+def _report_wait(ws: Workspace, args) -> int:
+    """Block until a served quiz is finished. If the headless grader handled it, print a short summary (for the
+    learner profile); if it falls to the agent, claim it and print the grading packet."""
+    import time
+
+    headless = grading.fallback_command(ws) is not None
+    start, deadline = time.time(), time.time() + args.timeout
+    try:
+        while time.time() < deadline:
+            grading.heartbeat(ws)
+            for job in grading.jobs(ws, "job"):
+                if headless and not grading.agent_only(job):
+                    continue  # the server's cheap grader takes it
+                session = job.name.removesuffix(".job.json")
+                if not grading.claim(ws, session, "agent"):
+                    continue
+                try:
+                    pk = grading.packet(ws, grading.load_report(ws, session))
+                except grading.GradingError as e:
+                    grading.fail(ws, session, str(e))
+                    continue
+                print(f"grade session {session}: {len(pk['items'])} answer(s) from '{pk['deck'].get('title') or pk['deck']['id']}'"
+                      f" ({pk['deck'].get('path') or 'deck file not found'})")
+                print(grading.RULES)
+                print(f"Then pipe the verdicts in: eztudy report grade {session} -   (the student is waiting on the results screen)")
+                _print_json(pk)
+                return 0
+            for kind in ("result", "failed"):
+                for f in grading.jobs(ws, kind):
+                    if f.stat().st_mtime < start:
+                        continue
+                    session = f.name.removesuffix(f".{kind}.json")
+                    if kind == "failed":
+                        print(f"grading failed for session {session}: {grading.status(ws, session).get('error')}"
+                              " (the student can self-grade in the page)")
+                        return 0
+                    r = grading.status(ws, session)
+                    sc = r.get("score") or {}
+                    print(f"session {session} graded by {r.get('grader')}: "
+                          + ", ".join(f"{v['id']} {v['result']}" for v in r.get("items", []))
+                          + (f"; score {sc['right']}/{sc['total']}" if "right" in sc else "")
+                          + " -> run `eztudy progress --json` and update wiki/learner.md")
+                    return 0
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        grading.clear_heartbeat(ws)
+    print(f"no quiz submitted in {args.timeout}s")
+    return 0
+
+
+def _report_grade(ws: Workspace, args) -> int:
+    try:
+        text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
+        result = grading.apply(ws, args.session, json.loads(text), grader="agent")
+    except (OSError, ValueError, grading.GradingError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    s = result["score"] or {}
+    print(f"graded {len(result['items'])} answer(s): "
+          + ", ".join(f"{v['id']} {v['result']}" for v in result["items"])
+          + (f"; score now {s['right']}/{s['total']}" if "right" in s else "")
+          + " -> the player shows the feedback now; run `eztudy progress --json` and update wiki/learner.md")
+    return 0
+
+
+def cmd_serve(ws: Workspace, args) -> int:
+    import signal
+    import webbrowser
+
+    if args.stop:
+        print("stopped" if serving.stop(ws) else "no server running for this notebook")
+        return 0
+    rel = ""
+    if args.open:
+        target = Path(args.open)
+        target = (target if target.is_absolute() else (Path.cwd() / target if (Path.cwd() / target).exists() else ws.root / target)).resolve()
+        if target.suffix == ".json":
+            target = target.with_suffix(".html")
+        if not target.is_file() or not target.is_relative_to(ws.study.resolve()):
+            print(f"error: {args.open}: not a rendered page under study/ (run `eztudy render` first)", file=sys.stderr)
+            return 1
+        rel = target.relative_to(ws.root.resolve()).as_posix()
+    st = serving.running(ws)
+    if st:
+        url = serving.page_url(st, rel)
+        print(f"eztudy server already running: {url}")
+        if rel and not args.no_browser:
+            webbrowser.open(url)
+        return 0
+    srv = serving.Server(ws, port=args.port)
+    url = serving.page_url(srv.state(), rel)
+    fb = (f"{Path(srv.fallback[0]).name} headless" + (f" ({srv.fallback[srv.fallback.index('--model') + 1]})" if "--model" in srv.fallback else "")
+          + ", else the agent session (`eztudy report wait`)") if srv.fallback else "agent session (`eztudy report wait`)"
+    print(f"serving {ws.study} at {url}\ngrading: {fb}\nstop with `eztudy serve --stop`", flush=True)
+    signal.signal(signal.SIGTERM, lambda *_: __import__("threading").Thread(target=srv.shutdown, daemon=True).start())
+    if rel and not args.no_browser:
+        webbrowser.open(url)
+    try:
+        srv.run()
+    except KeyboardInterrupt:
+        pass
+    return 0
 
 
 def cmd_progress(ws: Workspace, args) -> int:
@@ -726,6 +848,17 @@ def build_parser() -> argparse.ArgumentParser:
     rsub = s.add_subparsers(dest="report_cmd", required=True)
     r = rsub.add_parser("import", help="store *.eztudy-report.json files (default: scan study/ and ~/Downloads)")
     r.add_argument("files", nargs="*", help="report files, or - to read one from stdin")
+    r = rsub.add_parser("wait", help="block until a served quiz needs grading; print the grading packet (run in background)")
+    r.add_argument("--timeout", type=int, default=3600, help="seconds to wait (default 3600)")
+    r = rsub.add_parser("grade", help="apply verdicts for a waiting session; the player shows them immediately")
+    r.add_argument("session")
+    r.add_argument("file", help="verdict JSON file, or - for stdin")
+
+    s = sub.add_parser("serve", help="serve study/ on localhost: reports post themselves and answers get graded")
+    s.add_argument("--open", help="rendered page (or its .json) under study/ to open in the browser")
+    s.add_argument("--no-browser", action="store_true", help="print the URL only")
+    s.add_argument("--port", type=int, default=0, help="port (default: a free one)")
+    s.add_argument("--stop", action="store_true", help="stop this notebook's server")
 
     s = sub.add_parser("progress", help="mastery by topic and problem items, from imported reports")
     s.add_argument("--deck", help="only this deck id")
@@ -737,7 +870,7 @@ def build_parser() -> argparse.ArgumentParser:
 COMMANDS = {
     "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
-    "report": cmd_report, "progress": cmd_progress,
+    "report": cmd_report, "progress": cmd_progress, "serve": cmd_serve,
 }
 
 

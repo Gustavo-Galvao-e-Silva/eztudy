@@ -246,6 +246,20 @@ textarea.answer:disabled { opacity: .85; }
 .tick .pts, .rhint { font-size: .75rem; color: var(--muted); white-space: nowrap; }
 .rhint.ok::before { content: "✓ "; color: var(--good); }
 .rhint.bad::before { content: "✗ "; color: var(--bad); }
+.rmet { font-size: .75rem; color: var(--muted); flex-basis: 100%; padding-left: 38px; overflow-wrap: anywhere; }
+.rmet.ok::before { content: "✓ "; color: var(--good); }
+.rmet.bad::before { content: "✗ "; color: var(--bad); }
+
+/* agent grading (served player) */
+.dot.pend { border-color: var(--accent-ink); border-style: dashed; }
+.pending-note { margin: 0; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .875rem; }
+.spin { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent-ink); animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.agent-fb { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-left: 3px solid var(--accent-ink); background: var(--sunk); border-radius: 0 var(--r) var(--r) 0; font-family: var(--f-read); overflow-wrap: anywhere; }
+.grade-note .expl { color: var(--fg); }
+.fb-why { color: var(--muted); font-size: .9375rem; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+.sync-note { margin: -10px 0 0; display: flex; align-items: center; gap: 6px; font-size: .8125rem; color: var(--muted); }
+.sync-note svg { width: 14px; height: 14px; stroke: var(--good); fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* actions */
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

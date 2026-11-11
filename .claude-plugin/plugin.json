@@ -1,6 +1,6 @@
 {
   "name": "eztudy",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Local, open-source NotebookLM: drop files in sources/ and agents build a wiki + SQLite vector index, answer with citations, and generate quizzes, flashcards and study guides.",
   "author": {
     "name": "Gustavo Galvão"

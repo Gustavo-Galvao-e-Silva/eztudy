@@ -83,13 +83,14 @@ leaves the editor), local completions, conservative live lint, and an optional *
   as completions with their kind (`field`, `method`, `function`, `type`, `variable`, `constant`). Completions are
   local only (keywords, these identifiers, words in the file, snippets); the popup says so.
 - `answer`: the model solution, shown highlighted after the student submits.
-- `rubric` (optional): what a full answer does. After submitting, the student ticks each criterion to grade
-  themselves. `match` (optional, a regex) is a **hint**: the first line matching it gets a ✓ in the gutter and
+- `rubric` (optional): what a full answer does. After submitting, the student can tick each criterion; the
+  agent grading a served quiz marks each one met or not. `match` (optional, a regex) is a **hint**: the first line matching it gets a ✓ in the gutter and
   the criterion shows "hint: line N" or "hint: not found". Hints never grade; write them to match the key
   construct (a call, an exception, a comparison), not whole lines, and leave `match` out when no regex would
   be reliable.
 - Use `code` when writing code is the skill being tested; use `short` for explanations that may quote code.
-- Grading is self-graded ("I got it" / "I missed it"); performance reports include the code and ticked criteria.
+- Grading: served by `eztudy serve`, short and code answers are graded by the agent when the quiz ends (see
+  below). Opened from disk they are self-graded ("I got it" / "I missed it"). Reports include the code and ticked criteria.
 
 ## Flashcards — `study/flashcards/<slug>.json`
 ```json
@@ -120,7 +121,24 @@ report**. One report covers one session; Retry missed and Start over begin a new
             "question": "Which organelle…", "result": "wrong", "graded": "auto",
             "given": "Nucleus", "correct_answer": "Mitochondrion"}]}
 ```
-- Quiz `result`: `correct` | `wrong`; `graded` is `self` for short answers (`given` is the student's draft).
+- Quiz `result`: `correct` | `wrong` | `pending`; `graded` is `auto` (choice items), `self`, `agent` or `claude`
+  for short/code answers (`given` is the student's draft). `pending` means waiting for the agent; it carries no
+  mastery signal. Agent-graded items gain `feedback`, optional `points`, and `met` / `note` on rubric criteria.
+
+**Served mode.** Opened through `eztudy serve`, the player posts the report itself when the session ends (it is
+imported at once). A quiz with short/code answers then waits on the results screen while a grader returns verdicts
+through `eztudy report grade <session> -`:
+```json
+{"items": [{"id": "q2", "result": "correct", "feedback": "Right: ATP carries energy."},
+           {"id": "q3", "result": "wrong", "points": 1, "feedback": "Misses the empty-list case.",
+            "rubric": [{"index": 0, "met": true}, {"index": 1, "met": false, "note": "no check for []"}]}]}
+```
+One verdict per pending item; rubric criteria by 0-based `index` (or `id`). Graders: headless `claude -p` on a
+cheap model first (default `haiku`, no tools, no API key; `[grading] model = "…"` picks the model,
+`[grading] command = [...]` replaces it, `[grading] fallback = "none"` disables it), else the agent session blocked
+in `eztudy report wait`. The server exits by itself about 2 minutes after the last player tab closes (`[grading]
+linger_s`) while nothing is being graded, or after 2 hours with no requests. Files under
+`.eztudy/progress/grading/` track each session (`job` → `claimed` → `result` / `failed`).
 - Flashcards: `score` is `{know, learn, unmarked}`; items carry `front`, `tags`, `correct_answer` (the back) and
   `result` `know` | `learn` | `unmarked`. Only cards viewed in that session are included.
 - Mastery groups by item `topic` plus `tags`, so give every quiz item a `topic` and every card `tags`, and
