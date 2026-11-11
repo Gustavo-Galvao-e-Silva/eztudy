@@ -170,7 +170,26 @@ linger_s`) while nothing is being graded, or after 2 hours with no requests. Fil
   `result` `know` | `learn` | `unmarked`. Only cards viewed in that session are included.
 - Mastery groups by item `topic` plus `tags`, so give every quiz item a `topic` and every card `tags`, and
   reuse the same topic names across decks (use the wiki topic page titles).
-- Keep item `id`s stable when you revise a deck, so history follows the item.
+- Give every item a unique `id` and keep it stable when you revise a deck: progress and the review schedule
+  follow items by `(deck id, item id)`. `render` rejects duplicate ids and warns on missing ones (an item without
+  an id is tracked by its position, so reordering the deck mixes up its history).
+- A flashcard's `result` is the mark given **in that session**; a mark left from an earlier session reports
+  `unmarked`, so it isn't counted as a fresh review.
+- Items copied by `eztudy review` carry `src: {"deck": "<deck id>", "id": "<item id>"}` (and an id like
+  `cells--q1`); the player copies `src` into the report and its result counts toward the original item.
+
+## Review decks — `study/review/review-<date>.json` (written by `eztudy review`)
+Ordinary quiz / flashcard JSON made from the items the spaced-repetition schedule (FSRS-5, binary grades:
+`correct`/`know` = Good, `wrong`/`learn` = Again) says are due. Generated, not authored: re-run `eztudy review`
+rather than editing them. `eztudy due --json` gives the schedule:
+```json
+{"tracked": 24, "due_now": 5, "due_tomorrow": 2, "by_kind": {"quiz": 4, "flashcards": 1},
+ "next_due": "2026-11-12T09:30:00Z", "decks": ["cells"],
+ "items": [{"deck": "cells", "id": "q1", "kind": "quiz", "deck_path": "study/quizzes/cells.json",
+            "prompt": "Which organelle…?", "topics": ["Organelles"], "reps": 3, "lapses": 1, "last": "wrong",
+            "stability": 0.4, "difficulty": 7.2, "last_review": "2026-11-10T18:02:11Z",
+            "due": "2026-11-11T03:40:00Z", "overdue_days": 0.6, "retrievability": 0.83}]}
+```
 
 ## Player skins
 The `.html` player has five skins on the same layout: `focus` (default), `editorial`, `terminal`,
