@@ -17,8 +17,9 @@ from .workspace import Workspace
 
 REPORT_VERSION = 1
 REPORT_GLOB = "*.eztudy-report.json"
-RESULTS = {"quiz": {"correct", "wrong"}, "flashcards": {"know", "learn", "unmarked"}}
-SCORE = {"correct": 1.0, "know": 1.0, "wrong": 0.0, "learn": 0.0}  # unmarked carries no signal
+# `pending`: a short/code answer waiting for the agent to grade it (served player, see grading.py).
+RESULTS = {"quiz": {"correct", "wrong", "pending"}, "flashcards": {"know", "learn", "unmarked"}}
+SCORE = {"correct": 1.0, "know": 1.0, "wrong": 0.0, "learn": 0.0}  # unmarked and pending carry no signal
 UNTAGGED = "(untagged)"
 # Each newer observation of a topic shrinks the weight of the older ones by this factor.
 RECENCY_DECAY = 0.7
@@ -92,13 +93,19 @@ def _deck_path(ws: Workspace, deck_id: str) -> str | None:
 
 
 def store(ws: Workspace, rep: dict) -> tuple[str, bool]:
-    """Save a validated report. Returns (key, newly_added)."""
+    """Save a validated report. Returns (key, newly_added). A stored report that still has ungraded
+    (`pending`) items is replaced by a newer copy of the same session, e.g. after the student self-grades."""
     out = reports_dir(ws)
     out.mkdir(parents=True, exist_ok=True)
     key = report_key(rep)
     dest = out / f"{key}.json"
     if dest.exists():
-        return key, False
+        try:
+            old = json.loads(dest.read_text())
+        except (OSError, ValueError):
+            old = {}
+        if not any(it.get("result") == "pending" for it in old.get("items", [])):
+            return key, False
     path = _deck_path(ws, rep["deck"]["id"])
     if path:
         rep = {**rep, "deck": {**rep["deck"], "path": path}}

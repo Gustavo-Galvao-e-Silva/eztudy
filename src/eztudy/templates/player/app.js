@@ -139,7 +139,7 @@ const newSession = () => ({ id: Date.now().toString(36) + "-" + Math.random().to
 const makeReport = (session, items, score) => ({
   eztudy_report: 1, kind: DATA.type === "flashcards" ? "flashcards" : "quiz",
   deck: { id: DATA.id || DATA.title, title: DATA.title }, session: session.id,
-  started_at: session.started, finished_at: new Date().toISOString(), score, items,
+  started_at: session.started, finished_at: (session.finished ||= new Date().toISOString()), score, items,
 });
 const reportName = r => `${String(r.deck.id).replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "deck"}.${r.finished_at.replace(/[-:]/g, "").slice(0, 15)}.eztudy-report.json`;
 function saveReport(r) {
@@ -165,6 +165,30 @@ const reportBox = r => {
     h("p", { class: "expl" }, "Save this session for your study agent so the next quiz or deck targets what you missed."),
     h("div", { class: "actions" }, h("button", { type: "button", class: "btn ghost", onclick: () => saveReport(r) }, "Save report"), copy));
 };
+
+/* ---------------- served mode (`eztudy serve`): reports post themselves, the agent grades free answers ----------------
+   Only active when the page came from the local server (window.EZTUDY_SERVER). Opened from disk, none of this runs. */
+const SERVER = window.EZTUDY_SERVER || null;
+const api = (path, body) => fetch((SERVER.url || "") + path, body === undefined
+  ? { headers: { "X-Eztudy-Token": SERVER.token }, cache: "no-store" }
+  : { method: "POST", headers: { "X-Eztudy-Token": SERVER.token, "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  .then(r => r.ok ? r.json() : r.json().catch(() => ({})).then(e => Promise.reject(new Error(e.error || "HTTP " + r.status))));
+// POST the report unless this exact content was already sent; resolves to the server's reply (or null if unchanged).
+function sendReport(session, r) {
+  const sig = JSON.stringify(r.items.map(it => [it.id, it.result]));
+  if (session.sentSig === sig) return Promise.resolve(null);
+  session.sentSig = sig;
+  return api("/report", r).catch(e => { session.sentSig = null; throw e; });
+}
+// Tell the server this tab is open (every 30s) and when it closes, so it can shut itself down once nobody uses it.
+if (SERVER) {
+  const page = Math.random().toString(36).slice(2, 10), q = `?t=${encodeURIComponent(SERVER.token)}&page=${page}`;
+  const ping = path => fetch((SERVER.url || "") + path + q, { cache: "no-store", keepalive: true }).catch(() => {});
+  ping("/ping"); setInterval(() => ping("/ping"), 30000);
+  addEventListener("pagehide", () => ping("/bye"));
+  addEventListener("pageshow", e => { if (e.persisted) ping("/ping"); });  // back/forward cache restore
+}
+const syncNote = (text, done) => h("p", { class: "sync-note", role: "status" }, done ? ICON.check() : null, text);
 
 const stage = $("#stage");
 $("#title").textContent = DATA.title;
@@ -232,7 +256,21 @@ const codeBlock = text => pre(String(text ?? "").replace(/\n+$/, ""));
 function quiz(items) {
   const instant = DATA.instant_feedback === true;
   let order = items.map((_, i) => i), pos = 0, states = {}, session = newSession();
-  const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: null, ticks: new Set() });
+  const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: null, ticks: new Set(),
+    pending: false, by: null, feedback: null, met: null });
+  // Served: short/code answers are graded by the agent at the end instead of "I got it" / "I missed it".
+  let agentGrading = !!SERVER, gradeNote = null;
+  const isFree = it => it.type === "short" || it.type === "code";
+  const submitFree = (qi, msg) => {
+    const st = S(qi);
+    st.revealed = true;
+    if (agentGrading) { st.graded = true; st.pending = true; st.ok = null; }
+    render(); say(agentGrading ? "Submitted. Your agent grades this when you finish." : msg);
+  };
+  const pendingNote = (text = "Your agent grades this when you finish the quiz.") =>
+    h("p", { class: "pending-note" }, h("span", { class: "spin", "aria-hidden": "true" }), text);
+  const feedbackEl = (st, it) => st.feedback ? h("div", { class: "agent-fb" }, h("p", { class: "label" }, "Feedback"), rich(st.feedback, "div"),
+    it && it.explanation ? h("div", { class: "fb-why rich" }, mdFlow(it.explanation)) : null) : null;
   const draftOf = (it, st) => st.draft ?? (it.type === "code" ? String(it.starter || "").replace("$0", "") : "");
   const hasCode = items.some(it => it.type === "code");
   let currentEditor = null;
@@ -251,13 +289,13 @@ function quiz(items) {
         h("button", { type: "button", class: "choice", "aria-pressed": String((vimOn() ? "on" : "off") === v),
           onclick: () => { pref.set("vim", v); if (currentEditor) currentEditor.setVim(v === "on"); renderMenu(); } }, name)))) : null];
   };
-  function start(newOrder) { order = newOrder; pos = 0; states = {}; session = newSession(); render(); }
+  function start(newOrder) { order = newOrder; pos = 0; states = {}; session = newSession(); agentGrading = !!SERVER; gradeNote = null; render(); }
 
   function progress() {
     const dots = h("nav", { class: "dots", "aria-label": "Questions" }, order.map((qi, p) => {
       const st = states[qi];
-      const cls = ["dot", st && st.graded ? (st.ok ? "ok" : "bad") : "", p === pos && pos < order.length ? "cur" : ""].join(" ");
-      const label = `Question ${p + 1}` + (st && st.graded ? (st.ok ? ", correct" : ", missed") : "");
+      const cls = ["dot", st && st.pending ? "pend" : st && st.graded ? (st.ok ? "ok" : "bad") : "", p === pos && pos < order.length ? "cur" : ""].join(" ");
+      const label = `Question ${p + 1}` + (st && st.pending ? ", waiting for grading" : st && st.graded ? (st.ok ? ", correct" : ", missed") : "");
       return h("button", { type: "button", class: cls, title: label, "aria-label": label, "aria-current": p === pos ? "step" : null,
         onclick: () => { pos = p; render(); } });
     }));
@@ -299,11 +337,12 @@ function quiz(items) {
       box.append(ta);
       if (!st.revealed) {
         actions.append(h("button", { type: "button", class: "btn",
-          onclick: () => { st.revealed = true; render(); say("Model answer shown. Grade yourself."); } }, "Reveal answer"), next);
+          onclick: () => submitFree(qi, "Model answer shown. Grade yourself.") }, agentGrading ? "Submit" : "Reveal answer"), next);
       } else {
         const fb = h("div", { class: "fb" });
-        if (st.graded) fb.append(...verdict(st.ok, it, true));
-        fb.append(h("p", { class: "label" }, "Model answer"), rich(it.answer, "div"), explain(it), citeList(it));
+        if (st.pending) fb.append(pendingNote());
+        else if (st.graded) fb.append(...verdict(st.ok, it, st.by || true), ...[feedbackEl(st)].filter(Boolean));
+        fb.append(h("p", { class: "label" }, "Model answer"), rich(it.answer, "div"), ...[explain(it), citeList(it)].filter(Boolean));
         box.append(fb);
         if (!st.graded) actions.append(
           h("button", { type: "button", class: "btn ghost", onclick: () => grade(qi, false) }, "I missed it"),
@@ -351,10 +390,11 @@ function quiz(items) {
     const rubric = Array.isArray(it.rubric) ? it.rubric : [];
     let fb = null;
     if (!st.revealed) {
-      actions.append(h("button", { type: "button", class: "btn", onclick: () => { st.draft = draftOf(it, st); st.revealed = true; render(); say("Submitted. Compare with the model solution, then grade yourself."); } }, "Submit"), next);
+      actions.append(h("button", { type: "button", class: "btn", onclick: () => { st.draft = draftOf(it, st); submitFree(qi, "Submitted. Compare with the model solution, then grade yourself."); } }, "Submit"), next);
     } else {
       fb = h("div", { class: "fb" });
-      if (st.graded) fb.append(...verdict(st.ok, it, true));
+      if (st.pending) fb.append(pendingNote());
+      else if (st.graded) fb.append(...verdict(st.ok, it, st.by || true), ...[feedbackEl(st)].filter(Boolean));
       const model = h("div", { class: "code-host model" });
       fb.append(h("p", { class: "label" }, "Model solution"), model);
       if (rubric.length) fb.append(rubricList(it, st, rubric));
@@ -392,7 +432,9 @@ function quiz(items) {
           onclick: () => { st.ticks.has(k) ? st.ticks.delete(k) : st.ticks.add(k); render(); } },
           h("span", { class: "box", "aria-hidden": "true" }, st.ticks.has(k) ? ICON.check() : null),
           h("span", { class: "txt rich" }, mdFlow(c.text)), c.points != null ? h("span", { class: "pts" }, `${c.points} pt`) : null),
-          hint && hint.checked ? h("span", { class: "rhint " + (hint.line ? "ok" : "bad") }, hint.line ? `hint: line ${hint.line}` : "hint: not found") : null);
+          hint && hint.checked ? h("span", { class: "rhint " + (hint.line ? "ok" : "bad") }, hint.line ? `hint: line ${hint.line}` : "hint: not found") : null,
+          st.met && st.met[k] ? h("span", { class: "rmet " + (st.met[k].met ? "ok" : "bad") }, st.met[k].met ? "agent: met" : "agent: not met",
+            st.met[k].note ? h("span", { class: "rnote rich" }, " · ", mdFlow(st.met[k].note)) : null) : null);
       })));
   }
 
@@ -400,7 +442,7 @@ function quiz(items) {
     const ans = !ok && it.type !== "short" ? answerRich(it) : [];
     return [
       h("div", { class: "verdict" }, h("span", { class: "badge " + (ok ? "ok" : "bad") }, ok ? ICON.check() : ICON.x(), ok ? "Correct" : "Not quite"),
-        self ? h("span", { class: "ans" }, "self-graded") : ans.length ? h("span", { class: "ans" }, "Answer: ", ans) : null),
+        self ? h("span", { class: "ans" }, self === true || self === "self" ? "self-graded" : self === "claude" ? "graded by Claude" : "graded by your agent") : ans.length ? h("span", { class: "ans" }, "Answer: ", ans) : null),
       h("p", { class: "verdict-term " + (ok ? "ok" : "bad") }, ok ? "> correct" : ans.length ? ["> wrong, expected: ", ans.map(n => n.cloneNode(true))] : "> marked: missed"),
       h("span", { class: "stamp " + (ok ? "ok" : "bad"), "aria-hidden": "true" }, ok ? "Correct" : "Missed"),
     ];
@@ -424,7 +466,7 @@ function quiz(items) {
   }
   function grade(qi, ok) {
     const st = S(qi);
-    st.graded = true; st.ok = ok;
+    st.graded = true; st.ok = ok; st.pending = false; st.by = st.by || (isFree(items[qi]) ? "self" : null);
     render();
     say(ok ? "Correct." : "Not quite.");
   }
@@ -433,7 +475,17 @@ function quiz(items) {
     render();
     window.scrollTo({ top: 0 });
   }
+  // Served: a typed answer counts as submitted when the student moves on, so nothing is left behind.
+  function autoSubmit(qi) {
+    const it = items[qi], st = states[qi];
+    if (!agentGrading || !st || st.revealed || !isFree(it)) return;
+    const text = (st.draft || "").trim();
+    if (!text || (it.type === "code" && text === draftOf(it, { draft: null }).trim())) return;
+    st.revealed = true; st.graded = true; st.pending = true; st.ok = null;
+  }
   function forward() {
+    autoSubmit(order[pos]);
+    if (pos + 1 >= order.length) order.forEach(autoSubmit);
     if (pos + 1 < order.length) return goTo(pos + 1);
     // On the last question: results if everything is answered, else the first question still open.
     const firstOpen = order.findIndex(qi => !(states[qi] && states[qi].graded));
@@ -441,45 +493,112 @@ function quiz(items) {
   }
 
   function summary() {
-    const total = order.length, right = order.filter(i => states[i].ok).length;
-    const missed = order.filter(i => !states[i].ok);
+    const total = order.length, right = order.filter(i => states[i].ok === true).length;
+    const missed = order.filter(i => states[i].ok === false);
+    const waiting = order.filter(i => states[i].pending);
+    const ungraded = order.some(i => !states[i].graded);  // grading failed and the student hasn't self-graded yet
     const hist = store.get(); hist.attempts ||= [];
-    if (!session.recorded) { hist.attempts.push({ at: new Date().toISOString(), right, total }); store.set(hist); session.recorded = true; }
-    const best = Math.max(...hist.attempts.map(a => a.right / a.total));
+    // An attempt is recorded once every answer has a grade, so agent-graded scores count.
+    if (!session.recorded && !waiting.length && !ungraded) { hist.attempts.push({ at: new Date().toISOString(), right, total }); store.set(hist); session.recorded = true; }
+    const best = hist.attempts.length ? Math.max(...hist.attempts.map(a => a.right / a.total)) : right / total;
     setCount("Results");
     const topics = {};
     for (const i of order) { const t = items[i].topic; if (t) { (topics[t] ||= [0, 0]); topics[t][1]++; if (states[i].ok) topics[t][0]++; } }
     const given = i => {
       const it = items[i], st = states[i];
-      if (it.type === "short" || it.type === "code") return (st.draft || "").trim() ? "self-graded: missed" : "(left blank)";
+      if (it.type === "short" || it.type === "code") return !(st.draft || "").trim() ? "(left blank)"
+        : st.by && st.by !== "self" ? (it.type === "code" ? codeBlock(st.draft) : rich(st.draft, "div")) : "self-graded: missed";
       const picked = [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]);
       return picked.length ? joinRich(picked) : "—";
     };
-    session.report ||= makeReport(session, order.map(i => {
+    session.report = makeReport(session, order.map(i => {
       const it = items[i], st = states[i];
       return { id: it.id || `q${i + 1}`, type: it.type, topic: it.topic || null, tags: it.tags || [], difficulty: it.difficulty || null,
-        question: it.question, result: st.ok ? "correct" : "wrong", graded: it.type === "short" || it.type === "code" ? "self" : "auto",
+        question: it.question, result: st.pending || !st.graded ? "pending" : st.ok ? "correct" : "wrong",
+        graded: isFree(it) ? (st.pending ? "pending" : st.by || "self") : "auto",
+        ...(st.feedback ? { feedback: st.feedback } : {}),
         given: it.type === "short" || it.type === "code" ? (st.draft || "") : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
         correct_answer: it.type === "short" || it.type === "code" ? it.answer : answerText(it),
         ...(it.type === "code" ? { language: it.language || null,
           rubric: (it.rubric || []).map((c, k) => ({ id: c.id || null, text: c.text, points: c.points ?? null, ticked: st.ticks.has(k) })) } : {}) };
     }), { right, total });
+    const n = hist.attempts.length;
     stage.replaceChildren(...[...progress(),
-      h("div", { class: "score" }, h("span", { class: "big" }, right), h("span", { class: "of" }, `of ${total} · ${Math.round(right / total * 100)}% · best ${Math.round(best * 100)}% over ${hist.attempts.length} attempt${hist.attempts.length > 1 ? "s" : ""}`)),
+      h("div", { class: "score" }, h("span", { class: "big" }, right), h("span", { class: "of" }, `of ${total}` + (waiting.length
+        ? ` so far · grading ${waiting.length} answer${waiting.length > 1 ? "s" : ""}…`
+        : ` · ${Math.round(right / total * 100)}% · best ${Math.round(best * 100)}% over ${n} attempt${n > 1 ? "s" : ""}`))),
+      SERVER && !session.sendFailed ? reportStatus(waiting.length) : null,
       Object.keys(topics).length > 1 ? h("section", { class: "sect" }, h("h2", {}, "By topic"), h("ul", { class: "topics" }, Object.entries(topics).map(([t, [r, n]]) =>
         h("li", {}, h("span", { class: "tn", title: t }, t), h("span", { class: "track" }, h("i", { style: `width:${r / n * 100}%` })), h("span", { class: "n" }, `${r}/${n}`))))) : null,
-      h("section", { class: "sect" }, h("h2", {}, missed.length ? "To review" : "Perfect score"),
+      gradeNote ? h("section", { class: "sect grade-note", role: "status" }, h("p", { class: "expl" }, gradeNote),
+        order.some(i => !states[i].graded) ? h("div", { class: "actions" }, h("button", { type: "button", class: "btn", onclick: forward }, "Grade them myself")) : null) : null,
+      waiting.length ? h("section", { class: "sect" }, h("h2", {}, "Grading"), h("ul", { class: "misses" }, waiting.map(i =>
+        h("li", {}, h("div", { class: "mq rich" }, mdFlow(items[i].question)), pendingNote("Grading…"))))) : null,
+      waiting.length && !missed.length ? null : h("section", { class: "sect" }, h("h2", {}, missed.length ? "To review" : "Perfect score"),
         missed.length ? h("ul", { class: "misses" }, missed.map(i => {
           const it = items[i];
           return h("li", {}, h("div", { class: "mq rich" }, mdFlow(it.question)),
             h("dl", {}, h("dt", {}, "You"), h("dd", {}, given(i)),
               h("dt", {}, "Correct"), h("dd", {}, it.type === "short" ? rich(it.answer, "div") : it.type === "code" ? codeBlock(it.answer) : answerRich(it))),
-            explain(it));
+            states[i].feedback ? feedbackEl(states[i], it) : explain(it));
         })) : h("p", { class: "expl" }, "Every answer was right.")),
-      reportBox(session.report),
+      SERVER && !session.sendFailed ? null : reportBox(session.report),
       h("div", { class: "actions" }, h("span", { class: "spacer" }),
         missed.length ? h("button", { type: "button", class: "btn ghost", onclick: () => start(shuffle(missed)) }, `Retry missed (${missed.length})`) : null,
         h("button", { type: "button", class: "btn", onclick: () => start(shuffle(items.map((_, i) => i))) }, "Restart (shuffled)"))].filter(Boolean));
+    if (SERVER && !session.sendFailed && !ungraded) sync();
+  }
+
+  function reportStatus(waiting) {
+    const s = session;
+    return syncNote(!s.sentOk ? "Saving…" : waiting ? (s.grader ? "Saved · grading your written answers…"
+      : "Saved · waiting for your agent to grade (ask it to run `eztudy report wait`)") : "Saved to your notebook", s.sentOk && !waiting);
+  }
+  const onSummary = sess => sess === session && pos >= order.length;
+  function sync() {
+    const sess = session;
+    sendReport(sess, sess.report).then(res => {
+      if (!res) return;
+      sess.sentOk = true; sess.grader = res.grader;
+      if (res.grading === "pending" || res.grading === "done") poll(sess, states);
+      if (onSummary(sess)) render();
+    }, () => { sess.sendFailed = true; agentGrading = false; failGrading(sess, states, "Couldn't reach the eztudy server, so grade your written answers yourself and save the report below."); });
+  }
+  function poll(sess, sts) {
+    if (sess.polling) return;
+    sess.polling = true;
+    const until = Date.now() + 180000;
+    const tick = () => api("/grades/" + encodeURIComponent(sess.id)).then(g => {
+      if (g.status === "done") return applyGrades(sess, sts, g);
+      if (g.status === "failed") return failGrading(sess, sts, String(g.error || "Automatic grading failed").replace(/[\s.:]*$/, ".") + " Grade your written answers yourself.");
+      if (Date.now() > until) return failGrading(sess, sts, "Grading is taking too long. Grade your written answers yourself, or keep this tab open and check back.");
+      setTimeout(tick, 2000);
+    }, () => Date.now() > until ? failGrading(sess, sts, "Lost contact with the eztudy server. Grade your written answers yourself.") : setTimeout(tick, 3000));
+    tick();
+  }
+  function applyGrades(sess, sts, g) {
+    sess.polling = false;
+    const byId = {};
+    for (const i of order) byId[items[i].id || `q${i + 1}`] = i;
+    for (const v of g.items || []) {
+      const st = sts[byId[v.id]];
+      if (!st) continue;
+      st.pending = false; st.graded = true; st.ok = v.result === "correct"; st.by = g.grader || "agent"; st.feedback = v.feedback || null;
+      st.met = {}; for (const m of v.rubric || []) st.met[m.index] = m;
+    }
+    if (sess !== session) return;
+    // The server already holds these grades: don't post them back.
+    sess.sentSig = JSON.stringify(order.map(i => [items[i].id || `q${i + 1}`, states[i].ok ? "correct" : "wrong"]));
+    say(`Graded. ${order.filter(i => states[i].ok).length} of ${order.length} correct.`);
+    if (onSummary(sess)) render(); else if (pos < order.length) render();
+  }
+  function failGrading(sess, sts, msg) {
+    sess.polling = false;
+    if (sess !== session) return;
+    agentGrading = false; gradeNote = msg;
+    for (const i of order) { const st = sts[i]; if (st && st.pending) { st.pending = false; st.graded = false; st.ok = null; } }
+    say(msg);
+    if (onSummary(sess) || pos < order.length) render();
   }
   render();
 }
@@ -570,10 +689,15 @@ function flashcards(items) {
     stage.append(...[h("div", { class: "fc-top" }, h("span"), tally),
       h("div", { class: "score" }, h("span", { class: "big" }, deck.length ? `✓ ${c.know}` : "0"),
         h("span", { class: "of" }, deck.length ? `known · ${c.learn} still learning${unmarked ? ` · ${unmarked} unmarked` : ""}` : "No cards match this filter.")),
-      r ? reportBox(r) : null,
+      r ? (SERVER && !session.sendFailed ? syncNote(session.sentOk ? "Saved to your notebook" : "Saving…", session.sentOk) : reportBox(r)) : null,
       h("div", { class: "actions" }, h("span", { class: "spacer" }),
         h("button", { type: "button", class: "btn ghost", disabled: !counts(pool()).learn, onclick: () => build(true) }, `Review ✗ cards (${counts(pool()).learn})`),
         h("button", { type: "button", class: "btn", onclick: () => build(false) }, "Start over"))].filter(Boolean));
+    if (r && SERVER && !session.sendFailed) {
+      const sess = session;
+      sendReport(sess, r).then(res => { if (res && sess === session && end) { sess.sentOk = true; render(); } },
+        () => { sess.sendFailed = true; if (sess === session && end) render(); });
+    }
   }
   build();
 }

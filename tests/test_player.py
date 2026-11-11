@@ -109,7 +109,7 @@ def test_player_is_offline_click_only_and_small(data):
     assert not re.search(r"<link|<script[^>]+src=|@import|url\(\s*['\"]?https?:", page)  # no network
     assert not re.search(r"keydown|keyup|keypress", page)  # click-only
     assert "/*__EZTUDY" not in page and "__EZTUDY_" not in page
-    assert len(page.encode()) < 120_000
+    assert len(page.encode()) < 135_000  # served-mode grading UI added ~7 KB
 
 
 def test_theme_selection(notebook, capsys):

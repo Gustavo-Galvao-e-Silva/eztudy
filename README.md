@@ -14,7 +14,10 @@ ask your agent to study them. The agent does the rest:
   study guides, briefing docs, FAQs, glossaries, timelines, mind maps, audio-overview scripts.
 - **Code questions** — quiz items of type `code` open a real editor in the player (CodeMirror: syntax
   colours per skin, local completions, live lint, rubric hints, optional Vim keys), still fully offline.
-- **Adaptive practice** — finish a quiz or deck, hit *Save report*, and the agent imports it, tracks
+- **Graded for you** — the agent opens the quiz on a local page; when you finish, your written and code answers
+  are graded with feedback right on the results screen by a cheap headless model (`claude -p` with Haiku, using
+  your own login), or by your agent session when that's not available. No API keys.
+- **Adaptive practice** — every finished quiz or deck goes back to the agent automatically, which tracks
   mastery per topic, notes your misconceptions in `wiki/learner.md`, and aims the next quiz at your weak spots.
 - **Bookkeeping** — sources are tracked by content hash, so agents can rename and reorganize
   `sources/` freely without re-indexing.
@@ -52,8 +55,12 @@ cd ~/notebooks/biology && claude
 > use eztudy: index my sources, build the wiki, and make me a 15-question quiz on chapter 2
 ```
 
-Then open `study/quizzes/*.html` in a browser. When you finish, click **Save report** and tell the agent
-("I finished the quiz"): it imports the report and tailors the next quiz or deck to what you missed.
+The agent opens the quiz in your browser through `eztudy serve` (localhost only). Finish it and the results
+screen fills in: short and code answers are graded against the answer key, with feedback, and the report is saved to the
+notebook so the next quiz or deck targets what you missed.
+
+You can also open `study/quizzes/*.html` straight from disk: it works fully offline, you grade written answers
+yourself, and **Save report** + "I finished the quiz" hands the session to the agent.
 
 The CLI is usable directly too (`bin/eztudy` in this repo):
 
@@ -68,6 +75,8 @@ eztudy sources                    list tracked sources
 eztudy coverage topics.md         syllabus topics -> covered / partial / missing
 eztudy wiki init|lint [--fix]|log|cite
 eztudy render study/quizzes/x.json [--theme editorial]   (skins: focus, editorial, terminal, system7, typewriter)
+eztudy serve [--open x.html]      serve study/ on localhost: reports post themselves, answers get graded
+eztudy report wait | grade        agent side of grading (wait for a finished quiz, apply verdicts)
 eztudy report import [files|-]    store reports saved by the player (scans study/ and ~/Downloads)
 eztudy progress [--json]          mastery by topic + problem items across all sessions
 ```
