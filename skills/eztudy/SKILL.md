@@ -107,6 +107,9 @@ Read `references/study-formats.md` for schemas and quality rules. Then:
    never the identical question), about a third on `learning` topics, and the rest on topics not practised yet or
    `strong` ones. Target each misconception from `learner.md` with a question whose distractor is that
    misconception. Tell the user what you targeted and why.
+   **Pick the item type by the answer:** a number → `numeric`, a key term or code token → `cloze`, a sequence →
+   `ordering`, pairs → `matching` (all checked exactly in the page); `mcq` / `multi` / `true_false` for judgements
+   between alternatives; `short` / `code` only when the student must explain or write something open (graded by a model).
 2. Plan coverage from the wiki index (or `eztudy sources` + summaries). Spread items across topics.
    If the user has a syllabus or topic list, run `eztudy coverage <list.md>` first and tell them which
    topics have **no** material (don't invent items for those); re-run it after new sources are ingested.

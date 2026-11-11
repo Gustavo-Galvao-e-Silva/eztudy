@@ -8,7 +8,9 @@ import re
 from importlib import resources
 from pathlib import Path
 
-QUIZ_TYPES = {"mcq", "multi", "true_false", "short", "code"}
+QUIZ_TYPES = {"mcq", "multi", "true_false", "short", "code", "numeric", "cloze", "ordering", "matching"}
+CHECKED_TYPES = {"numeric", "cloze", "ordering", "matching"}  # graded exactly in the player (templates/player/checks.js)
+BLANK = "___"
 
 # `language` of a code item -> editor language pack ("id" or "id:dialect"). Mirrors ALIASES in
 # editor/src/editor.js; anything else is edited as plain text (still with completions from context).
@@ -78,6 +80,59 @@ def validate(data: dict) -> list[str]:
             errs.append(f"{where}: short `answer` must be a non-empty model answer string")
         elif t == "code":
             errs += [f"{where}: {e}" for e in _code_errors(it)]
+        elif t in CHECKED_TYPES:
+            errs += [f"{where}: {e}" for e in _checked_errors(it, t)]
+    return errs
+
+
+def _is_num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _strings(xs, n_min: int = 1) -> bool:
+    return isinstance(xs, list) and len(xs) >= n_min and all(isinstance(x, str) and x.strip() for x in xs)
+
+
+def _checked_errors(it: dict, t: str) -> list[str]:
+    ans = it.get("answer")
+    if t == "numeric":
+        errs = [] if _is_num(ans) else ["numeric `answer` must be a number"]
+        tol = it.get("tolerance")
+        if tol is not None and not ((_is_num(tol) and tol >= 0) or (isinstance(tol, str) and re.fullmatch(r"\s*\d+(\.\d+)?\s*%\s*", tol))):
+            errs.append('`tolerance` must be a number >= 0 or a percentage like "2%"')
+        if "unit" in it and not isinstance(it["unit"], str):
+            errs.append("`unit` must be a string")
+        return errs
+    if t == "cloze":
+        text = it.get("text")
+        if not isinstance(text, str) or BLANK not in text:
+            return [f"cloze `text` must be a passage with one `{BLANK}` per blank"]
+        if not isinstance(ans, list) or not ans:
+            return ["cloze `answer` must list the accepted answer(s) for each blank"]
+        errs = []
+        if text.count(BLANK) != len(ans):
+            errs.append(f"cloze `text` has {text.count(BLANK)} blanks but `answer` has {len(ans)} entries")
+        for k, b in enumerate(ans, start=1):
+            spec = {"accept": [b]} if isinstance(b, str) else {"accept": b} if isinstance(b, list) else b
+            if not isinstance(spec, dict) or not _strings(spec.get("accept")):
+                errs.append(f"blank {k}: give a string, a list of strings, or {{\"accept\": [...], \"regex\"?: ...}}")
+                continue
+            if "regex" in spec:
+                try:
+                    re.compile(spec["regex"])
+                except (re.error, TypeError) as e:
+                    errs.append(f"blank {k}: `regex` is not valid: {e}")
+        return errs
+    if t == "ordering":
+        if not _strings(ans, 2) or len(ans) > 10:
+            return ["ordering `answer` must be the correct order: 2 to 10 strings"]
+        return [] if len(set(ans)) == len(ans) else ["ordering `answer` entries must be unique"]
+    # matching
+    if not isinstance(ans, list) or len(ans) < 2 or not all(isinstance(p, list) and len(p) == 2 and _strings(p, 2) for p in ans):
+        return ['matching `answer` must be at least 2 pairs: [["left", "right"], ...]']
+    errs = [] if len({p[0] for p in ans}) == len(ans) else ["matching left-hand items must be unique"]
+    if "distractors" in it and not (isinstance(it["distractors"], list) and all(isinstance(d, str) and d.strip() for d in it["distractors"])):
+        errs.append("`distractors` must be a list of strings")
     return errs
 
 
@@ -150,6 +205,16 @@ def _cite_text(item: dict) -> str:
     return "; ".join(parts)
 
 
+def _blank_answers(b) -> str:
+    accept = [b] if isinstance(b, str) else b if isinstance(b, list) else b.get("accept", [])
+    return " / ".join(accept)
+
+
+def _cloze_md(text: str, fills: list[str], monospace=False) -> str:
+    filled = "".join(p + (fills[k] if k < len(fills) else "") for k, p in enumerate(text.split(BLANK)))
+    return f"```\n{filled.strip(chr(10))}\n```" if monospace else filled
+
+
 def to_markdown(data: dict) -> str:
     out = [f"# {data['title']}", ""]
     if data.get("description"):
@@ -183,6 +248,21 @@ def to_markdown(data: dict) -> str:
             if q.get("rubric"):
                 ans += "\n\nRubric:\n" + "\n".join(
                     f"- {c['text']}" + (f" ({c['points']} pt)" if "points" in c else "") for c in q["rubric"])
+        elif t == "numeric":
+            tol = q.get("tolerance")
+            out.append("_Number" + (f" in {q['unit']}" if q.get("unit") else "") + "._")
+            ans = f"{q['answer']}" + (f" {q['unit']}" if q.get("unit") else "") + (f" (± {tol})" if tol is not None else "")
+        elif t == "cloze":
+            mono = q.get("monospace")
+            out += [_cloze_md(q["text"], ["_____" if mono else "\\_" * 5] * len(q["answer"]), mono)]
+            ans = _cloze_md(q["text"], [f"[{_blank_answers(b)}]" for b in q["answer"]], mono)
+        elif t == "ordering":
+            out += [f"- {x}" for x in sorted(q["answer"])]
+            ans = " → ".join(q["answer"])
+        elif t == "matching":
+            rights = sorted({r for _, r in q["answer"]} | set(q.get("distractors") or []))
+            out += [f"- {left}" for left, _ in q["answer"]] + ["", "_Options:_ " + " · ".join(rights)]
+            ans = "; ".join(f"{left} → {right}" for left, right in q["answer"])
         else:
             out.append("_Short answer._")
             ans = q["answer"]
@@ -240,7 +320,7 @@ def to_html(data: dict, skin: str | None = None) -> str:
         .replace("__EZTUDY_TITLE__", html.escape(data["title"]))
         .replace("/*__EZTUDY_CSS__*/", css)
         .replace("<!--__EZTUDY_VENDOR__-->", _vendor(code_langs(data)))
-        .replace("/*__EZTUDY_JS__*/", _player("app.js"))
+        .replace("/*__EZTUDY_JS__*/", _player("checks.js") + "\n" + _player("app.js"))
         .replace("/*__EZTUDY_DATA__*/null", payload)
     )
 

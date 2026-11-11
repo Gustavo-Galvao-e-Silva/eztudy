@@ -257,7 +257,7 @@ function quiz(items) {
   const instant = DATA.instant_feedback === true;
   let order = items.map((_, i) => i), pos = 0, states = {}, session = newSession();
   const S = i => (states[i] ||= { sel: new Set(), graded: false, ok: null, revealed: false, draft: null, ticks: new Set(),
-    pending: false, by: null, feedback: null, met: null });
+    pending: false, by: null, feedback: null, met: null, inp: [], order: null, rights: null, check: null });
   // Served: short/code answers are graded by the agent at the end instead of "I got it" / "I missed it".
   let agentGrading = !!SERVER, gradeNote = null;
   const isFree = it => it.type === "short" || it.type === "code";
@@ -277,8 +277,20 @@ function quiz(items) {
   const optionsOf = it => it.type === "true_false" ? ["True", "False"] : (it.options || []);
   const correctIdx = it => it.type === "true_false" ? [it.answer === true || it.answer === "true" ? 0 : 1]
     : Array.isArray(it.answer) ? it.answer.slice().sort((a, b) => a - b) : [it.answer];
-  const answerText = it => it.type === "short" || it.type === "code" ? "" : correctIdx(it).map(i => optionsOf(it)[i]).join("; ");
-  const answerRich = it => it.type === "short" || it.type === "code" ? [] : joinRich(correctIdx(it).map(i => optionsOf(it)[i]));
+  const CHECKED = ["numeric", "cloze", "ordering", "matching"], isChecked = it => CHECKED.includes(it.type);
+  const clozeFilled = (it, wrap) => it.text.split("___").map((p, k) => p + (k < it.answer.length ? wrap(blankAnswer(it.answer[k])) : "")).join("");
+  const numAnswer = it => `${it.answer}${it.unit ? " " + it.unit : ""}`;
+  const checkedText = it => it.type === "numeric" ? numAnswer(it)
+    : it.type === "cloze" ? clozeFilled(it, a => `[${a}]`)
+    : it.type === "ordering" ? it.answer.join(" → ") : it.answer.map(([l, r]) => `${l} → ${r}`).join("; ");
+  const answerText = it => isFree(it) ? "" : isChecked(it) ? checkedText(it) : correctIdx(it).map(i => optionsOf(it)[i]).join("; ");
+  const answerRich = it => isFree(it) ? []
+    : it.type === "cloze" ? (it.monospace ? [codeBlock(clozeFilled(it, a => a))] : mdFlow(clozeFilled(it, a => `**${a}**`)))
+    : isChecked(it) ? mdFlow(checkedText(it)) : joinRich(correctIdx(it).map(i => optionsOf(it)[i]));
+  // What the student answered on a checked item, as text (report + results list).
+  const checkedGiven = (it, st) => it.type === "numeric" ? (st.inp[0] || "").trim()
+    : it.type === "cloze" ? it.answer.map((_, k) => (st.inp[k] || "").trim() || "—").join(" | ")
+    : it.type === "ordering" ? (st.order || []).join(" → ") : it.answer.map(([l], k) => `${l} → ${st.inp[k] || "—"}`).join("; ");
 
   menuExtras = () => {
     const missed = order.filter(i => states[i] && states[i].graded && !states[i].ok);
@@ -313,7 +325,10 @@ function quiz(items) {
     const multi = it.type === "multi";
     const lang = it.type === "code" && hasEditor() ? window.EZCM.resolveLang(it.language).id : "";
     const typeLabel = { mcq: "Choose one", true_false: "True or false", multi: "Select all that apply", short: "Write your answer",
-      code: "Write code" + (LANG_NAMES[lang] || it.language ? ` (${LANG_NAMES[lang] || it.language})` : "") + ", then submit to compare with a model solution" }[it.type];
+      code: "Write code" + (LANG_NAMES[lang] || it.language ? ` (${LANG_NAMES[lang] || it.language})` : "") + ", then submit to compare with a model solution",
+      numeric: "Enter a number" + [it.unit ? `in ${it.unit}` : "", it.tolerance != null ? `within ± ${it.tolerance}` : ""].filter(Boolean).map(x => " " + x).join(","),
+      cloze: "Fill in the blank" + (it.answer && it.answer.length > 1 ? "s" : ""), ordering: "Put these in order, first at the top",
+      matching: "Match each item on the left" }[it.type];
     const box = h("article", { class: "qbox", "aria-labelledby": "qh" },
       h("div", { class: "meta" }, [it.topic, it.difficulty, ...(it.tags || [])].filter(Boolean).map(t => h("span", {}, t))),
       ...questionEls(it.question),
@@ -329,6 +344,7 @@ function quiz(items) {
     const actions = h("div", { class: "actions" }, back, h("span", { class: "spacer" }));
 
     if (it.type === "code") return renderCode(qi, it, st, box, actions, next);
+    if (isChecked(it)) return renderChecked(qi, it, st, box, actions, next);
 
     if (it.type === "short") {
       const ta = h("textarea", { class: "answer", spellcheck: "false", placeholder: "Type your answer, then reveal the model answer…",
@@ -376,6 +392,75 @@ function quiz(items) {
     actions.append(next);
     box.append(actions);
     stage.append(...progress(), box);
+  }
+
+  /* numeric / cloze / ordering / matching: answered in place, graded exactly on Confirm (checks.js) */
+  function renderChecked(qi, it, st, box, actions, next) {
+    const done = st.graded, marks = st.check ? st.check.marks : [];
+    const confirm = h("button", { type: "button", class: "btn", id: "confirm", onclick: () => confirmChecked(qi) }, "Confirm");
+    const ready = () => it.type === "ordering" || st.inp.some(v => String(v || "").trim());
+    const refresh = () => { confirm.disabled = !ready(); };
+    const state = k => done ? (marks[k] ? " ok" : " bad") : "";
+    const fix = (k, text) => done && !marks[k] ? h("span", { class: "fix" }, text) : null;
+    const field = (k, attrs) => {
+      const el = h("input", { type: "text", autocomplete: "off", autocapitalize: "off", spellcheck: "false", disabled: done,
+        oninput: e => { st.inp[k] = e.target.value; refresh(); }, ...attrs });
+      el.value = st.inp[k] || "";
+      return el;
+    };
+    if (it.type === "numeric") {
+      box.append(h("div", { class: "num-row" },
+        field(0, { class: "num-input" + state(0), inputmode: "decimal", "aria-label": "Your answer" + (it.unit ? ` in ${it.unit}` : "") }),
+        it.unit ? h("span", { class: "unit" }, it.unit) : null));
+    } else if (it.type === "cloze") {
+      const parts = String(it.text).split("___"), mono = it.monospace === true, kids = [];
+      parts.forEach((part, k) => {
+        if (mono) kids.push(part); else part.split("\n").forEach((ln, j) => { if (j) kids.push(h("br")); kids.push(...mdInline(ln)); });
+        if (k < parts.length - 1) {
+          const want = blankAnswer(it.answer[k]);
+          kids.push(h("span", { class: "blank-wrap" }, field(k, { class: "blank" + state(k), size: Math.max(4, Math.min(28, want.length + 2)),
+            "aria-label": `Blank ${k + 1}` }), fix(k, want)));
+        }
+      });
+      box.append(mono ? h("pre", { class: "code cloze" }, h("code", {}, kids)) : h("p", { class: "cloze rich" }, kids));
+    } else if (it.type === "ordering") {
+      st.order ||= shuffleAway(it.answer);
+      const move = (k, d) => { const o = st.order; [o[k], o[k + d]] = [o[k + d], o[k]]; render();
+        const b = stage.querySelector(`[data-move="${k + d}:${d}"]`) || stage.querySelector(`[data-move="${k + d}:${-d}"]`); if (b) b.focus(); };
+      box.append(h("ol", { class: "order-list" }, st.order.map((x, k) => h("li", { class: "order-row" + state(k) },
+        h("span", { class: "n" }, k + 1), h("span", { class: "txt rich" }, mdFlow(x)),
+        done ? fix(k, ["should be: ", ...mdFlow(it.answer[k])])
+          : h("span", { class: "moves" },
+            h("button", { type: "button", class: "iconbtn", "data-move": `${k}:-1`, disabled: k === 0, "aria-label": `Move "${x}" up`, onclick: () => move(k, -1) }, svg('<path d="M6 14.5l6-6 6 6"/>')),
+            h("button", { type: "button", class: "iconbtn", "data-move": `${k}:1`, disabled: k === st.order.length - 1, "aria-label": `Move "${x}" down`, onclick: () => move(k, 1) }, svg('<path d="M6 9.5l6 6 6-6"/>')))))));
+    } else {
+      st.rights ||= shuffle([...new Set([...it.answer.map(([, r]) => r), ...(it.distractors || [])])]);
+      box.append(h("div", { class: "match-grid" }, it.answer.map(([left], k) => {
+        const sel = h("select", { class: "match-sel" + state(k), disabled: done, "aria-label": `Match for ${left}`,
+          onchange: e => { st.inp[k] = e.target.value; refresh(); } },
+          h("option", { value: "" }, "Choose…"), st.rights.map(r => h("option", { value: r, selected: st.inp[k] === r }, r)));
+        return h("div", { class: "match-row" }, h("span", { class: "left rich" }, mdFlow(left)), h("span", { class: "pick" }, sel, fix(k, it.answer[k][1])));
+      })));
+    }
+    if (done) {
+      const c = st.check, unit = { cloze: "blank", ordering: "position", matching: "match" }[it.type];
+      box.append(h("div", { class: "fb" }, ...verdict(st.ok, it),
+        unit && c && c.total > 1 && !st.ok ? h("p", { class: "partial" }, `${c.right} of ${c.total} ${unit}${c.total > 1 ? (unit === "match" ? "es" : "s") : ""} right`) : null,
+        ...[explain(it), citeList(it)].filter(Boolean)));
+    } else {
+      refresh();
+      actions.append(confirm);
+    }
+    actions.append(next);
+    box.append(actions);
+    stage.append(...progress(), box);
+  }
+  function confirmChecked(qi) {
+    const it = items[qi], st = S(qi);
+    if (st.graded) return;
+    st.check = it.type === "numeric" ? checkNumeric(it, st.inp[0]) : it.type === "cloze" ? checkCloze(it, st.inp)
+      : it.type === "ordering" ? checkOrdering(it, st.order) : checkMatching(it, st.inp);
+    grade(qi, st.check.ok);
   }
 
   function renderCode(qi, it, st, box, actions, next) {
@@ -439,7 +524,7 @@ function quiz(items) {
   }
 
   function verdict(ok, it, self = false) {
-    const ans = !ok && it.type !== "short" ? answerRich(it) : [];
+    const ans = !ok && it.type !== "short" && !["cloze", "ordering", "matching"].includes(it.type) ? answerRich(it) : [];
     return [
       h("div", { class: "verdict" }, h("span", { class: "badge " + (ok ? "ok" : "bad") }, ok ? ICON.check() : ICON.x(), ok ? "Correct" : "Not quite"),
         self ? h("span", { class: "ans" }, self === true || self === "self" ? "self-graded" : self === "claude" ? "graded by Claude" : "graded by your agent") : ans.length ? h("span", { class: "ans" }, "Answer: ", ans) : null),
@@ -508,6 +593,7 @@ function quiz(items) {
       const it = items[i], st = states[i];
       if (it.type === "short" || it.type === "code") return !(st.draft || "").trim() ? "(left blank)"
         : st.by && st.by !== "self" ? (it.type === "code" ? codeBlock(st.draft) : rich(st.draft, "div")) : "self-graded: missed";
+      if (isChecked(it)) return checkedGiven(it, st) || "—";
       const picked = [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]);
       return picked.length ? joinRich(picked) : "—";
     };
@@ -517,7 +603,8 @@ function quiz(items) {
         question: it.question, result: st.pending || !st.graded ? "pending" : st.ok ? "correct" : "wrong",
         graded: isFree(it) ? (st.pending ? "pending" : st.by || "self") : "auto",
         ...(st.feedback ? { feedback: st.feedback } : {}),
-        given: it.type === "short" || it.type === "code" ? (st.draft || "") : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
+        given: isFree(it) ? (st.draft || "") : isChecked(it) ? checkedGiven(it, st) : [...st.sel].sort((a, b) => a - b).map(k => optionsOf(it)[k]).join("; "),
+        ...(isChecked(it) && st.check ? { partial: { right: st.check.right, total: st.check.total } } : {}),
         correct_answer: it.type === "short" || it.type === "code" ? it.answer : answerText(it),
         ...(it.type === "code" ? { language: it.language || null,
           rubric: (it.rubric || []).map((c, k) => ({ id: c.id || null, text: c.text, points: c.points ?? null, ticked: st.ticks.has(k) })) } : {}) };

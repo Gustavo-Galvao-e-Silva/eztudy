@@ -130,6 +130,42 @@ textarea.answer {
 }
 textarea.answer:disabled { opacity: .85; }
 
+/* exactly-checked items: numeric, cloze, ordering, matching */
+.num-row { display: flex; align-items: center; gap: 10px; }
+.num-input, .blank, .match-sel {
+  border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--surface); color: var(--fg); min-height: 40px; padding: 6px 10px;
+}
+.num-input { width: min(14rem, 100%); font-variant-numeric: tabular-nums; }
+.num-row .unit { color: var(--muted); }
+.num-input:focus, .blank:focus, .match-sel:focus { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+.cloze { margin: 0; font: 400 1.0625rem/2.4 var(--f-read); overflow-wrap: anywhere; }
+pre.cloze { line-height: 2.2; }
+.blank-wrap { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.blank { min-height: 0; padding: 2px 8px; font: inherit; line-height: 1.5; max-width: 100%; }
+pre.cloze .blank { font-family: var(--f-mono, ui-monospace, monospace); }
+.ok.num-input, .blank.ok, .match-sel.ok { border-color: var(--good); box-shadow: inset 0 0 0 1px var(--good); }
+.bad.num-input, .blank.bad, .match-sel.bad { border-color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad); }
+.num-input:disabled, .blank:disabled, .match-sel:disabled { opacity: 1; }
+.fix { font-size: .8125rem; color: var(--muted); }
+.fix::before { content: "✓ "; color: var(--good); }
+.order-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.order-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.order-row .n { width: 1.4em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.order-row .txt { flex: 1; min-width: 8rem; overflow-wrap: anywhere; }
+.order-row .moves { display: flex; gap: 4px; }
+.order-row .iconbtn svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.order-row .iconbtn:disabled { opacity: .35; }
+.order-row.ok { border-color: var(--good); }
+.order-row.bad { border-color: var(--bad); }
+.order-row .fix { flex-basis: 100%; padding-left: calc(1.4em + 10px); }
+.match-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px 14px; align-items: center; }
+.match-row { display: contents; }
+.match-row .left { overflow-wrap: anywhere; }
+.match-row .pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.match-sel { width: 100%; }
+.partial { margin: 0; font-size: .875rem; color: var(--muted); }
+@media (max-width: 480px) { .match-grid { grid-template-columns: minmax(0, 1fr); } .match-row .left { margin-top: 6px; font-weight: 600; } }
+
 /* ---------- code editor (CodeMirror). Skins set the tokens:
    --ed-bg, --ed-gutter, --ed-active, --ed-sel, --ed-cursor, and --syn-keyword / string / number /
    comment / type / function / variable / operator / punct. Nothing below hard-codes a colour. ---------- */

@@ -12,6 +12,8 @@ ask your agent to study them. The agent does the rest:
   hybrid semantic + keyword search with page-level citations. No API keys, no servers.
 - **Study material** — quizzes, flashcards (both with a self-contained interactive HTML player),
   study guides, briefing docs, FAQs, glossaries, timelines, mind maps, audio-overview scripts.
+- **Answers checked exactly** — numbers with a tolerance and unit, fill-in-the-blank (including code), put-in-order and
+  matching questions are graded instantly in the page, no model involved.
 - **Code questions** — quiz items of type `code` open a real editor in the player (CodeMirror: syntax
   colours per skin, local completions, live lint, rubric hints, optional Vim keys), still fully offline.
 - **Graded for you** — the agent opens the quiz on a local page; when you finish, your written and code answers
