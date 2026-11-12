@@ -1,9 +1,9 @@
 {
-  "source_hash": "5bcb89d7f7bc2c5e",
+  "source_hash": "c22f1f7cd0793cfe",
   "files": {
     "cm-core.js": {
-      "raw": 597689,
-      "gzip": 194382
+      "raw": 597729,
+      "gzip": 194413
     },
     "cm-lang-cpp.js": {
       "raw": 105052,
