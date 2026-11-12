@@ -65,6 +65,11 @@ Every answer also feeds a spaced-repetition schedule (FSRS) across all your quiz
 back the next day, and each success pushes the item further out. `eztudy status` shows how many are due, and
 `eztudy review` (or asking the agent to "review what's due") turns them into one review session.
 
+`eztudy dash` shows what to study next and why (reviews due, weak topics, items you keep missing, syllabus
+topics you haven't practised), along with mastery bars, recent scores, decks, your streak and an exam countdown. Ask
+the agent "what should I study?" and it reads the same data. `eztudy statusline --install` puts a one-line summary in
+Claude Code's status bar for that notebook, e.g. `📚 12 due · focus: Heaps, AVL · exam in 9d`.
+
 Each citation under an answer is a link: it opens the source at the cited page (PDFs) or lines (code and
 text), so you can check the answer against your material in one click.
 
@@ -90,6 +95,8 @@ eztudy report import [files|-]    store reports saved by the player (scans study
 eztudy progress [--json]          mastery by topic + problem items across all sessions
 eztudy due [--days N] [--json]    items the spaced-repetition schedule says to review now
 eztudy review [--limit 20]        build + render a review quiz/deck from the due items (study/review/)
+eztudy dash [--json]              dashboard: what to study next, mastery, misses, due reviews, decks
+eztudy statusline [--install]     one-line summary for Claude Code's status line
 ```
 
 ## Layout of a notebook
