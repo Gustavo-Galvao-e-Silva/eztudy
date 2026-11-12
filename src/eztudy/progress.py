@@ -122,6 +122,21 @@ def default_candidates(ws: Workspace) -> list[Path]:
     return sorted(set(found))
 
 
+def count_unimported(ws: Workspace) -> int:
+    """Valid report files the player saved (study/, ~/Downloads) that aren't stored yet."""
+    d = reports_dir(ws)
+    stored = {p.stem for p in d.glob("*.json")} if d.exists() else set()
+    n = 0
+    for p in default_candidates(ws):
+        try:
+            rep = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if not validate(rep) and report_key(rep) not in stored:
+            n += 1
+    return n
+
+
 def load_all(ws: Workspace) -> list[dict]:
     d = reports_dir(ws)
     reps = []

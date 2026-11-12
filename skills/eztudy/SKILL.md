@@ -47,6 +47,9 @@ eztudy report import [files… | -]  # store performance reports the player save
 eztudy progress [--deck ID] [--json]   # mastery by topic (weak/learning/strong) + problem items + `due` counts
 eztudy due [--deck ID] [--topic T] [--days N] [--json]   # items the spaced-repetition schedule says to review now
 eztudy review [--limit 20] [--deck ID] [--topic T]       # write + render study/review/review-<date>.json (and -cards.json) from due items
+eztudy dash [--json]               # dashboard: recommended topics (with reasons + next command), mastery, still-missed
+                                   # items, due counts, streak, exam countdown, decks; --json is the same data for you
+eztudy statusline --install        # show "📚 12 due · focus: Heaps, AVL · exam in 9d" in Claude Code's status line (this notebook)
 ```
 
 `search --json` prints a list of hits, best first:
@@ -110,7 +113,7 @@ Read `references/study-formats.md` for schemas and quality rules. Then:
    never the identical question), about a third on `learning` topics, and the rest on topics not practised yet or
    `strong` ones. Target each misconception from `learner.md` with a question whose distractor is that
    misconception. Tell the user what you targeted and why.
-   **Due items come first:** if `progress --json` → `due.due_now` is non-zero, offer `eztudy review` (workflow 7)
+   **Due items come first:** if `progress --json` → `due.due_now` is non-zero, offer `eztudy review` (workflow 8)
    before writing new material, and weight new items toward the topics of `eztudy due --json` items.
    Give every item a stable, unique `id`: the review schedule follows items by id.
    **Pick the item type by the answer:** a number → `numeric`, a key term or code token → `cloze`, a sequence →
@@ -197,7 +200,21 @@ because the student is on the results screen watching "Grading…":
 If nobody can grade (no headless grader and no agent waiting, or both failed), after about 3 minutes the page
 lets the student grade themselves.
 
-### 7. Review what's due (spaced repetition)
+### 7. "What should I study?" (dashboard)
+Run `eztudy dash --json`. `recommend` is already ranked (due reviews, low mastery, items still missed, syllabus
+topics never practised), each with `reasons` and an `action`. Explain the top two or three in a sentence each, then
+do the first: `eztudy review --topic …` (workflow 8) or a tailored quiz (workflow 3). The user can see the same
+thing with `! eztudy dash`. Optional settings in `.eztudy/config.toml` make it sharper; offer them when you learn
+the exam date or syllabus:
+```toml
+[study]
+syllabus = "topics.md"   # Markdown list of exam topics: unpractised ones get recommended
+exam = 2026-12-10        # countdown in the dashboard and status line
+```
+Once per notebook, offer the Claude Code status line (`eztudy statusline --install` writes this notebook's
+`.claude/settings.json`). Run it only if the user agrees. It never replaces another status line without `--force`.
+
+### 8. Review what's due (spaced repetition)
 Every imported report feeds an FSRS schedule over all quiz items and flashcards, derived from the reports each
 time (nothing to maintain). A miss comes back within a day; each success pushes the item further out. When the
 user asks what to study, says "review", or `status` shows `review: N due now`:

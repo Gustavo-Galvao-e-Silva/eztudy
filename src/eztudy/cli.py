@@ -232,15 +232,7 @@ def _progress_brief(ws: Workspace) -> dict:
     summary = prog.summarize(reports)
     retention, max_days = srs.settings(ws.config)
     due = srs.due_summary(srs.schedule(reports, retention=retention, max_interval=max_days))
-    stored = {p.stem for p in prog.reports_dir(ws).glob("*.json")} if prog.reports_dir(ws).exists() else set()
-    unimported = 0
-    for p in prog.default_candidates(ws):
-        try:
-            rep = json.loads(p.read_text())
-        except (OSError, ValueError):
-            continue
-        if not prog.validate(rep) and prog.report_key(rep) not in stored:
-            unimported += 1
+    unimported = prog.count_unimported(ws)
     st = serving.state_path(ws).exists() and serving.running(ws)
     return {"reports": summary["reports"], "last_session": summary["last_session"],
             "weak_topics": summary["weak_topics"], "unimported": unimported, "due": due,
@@ -873,6 +865,88 @@ def cmd_progress(ws: Workspace, args) -> int:
     return 0
 
 
+# --- dashboard ----------------------------------------------------------------------
+
+
+def cmd_dash(ws: Workspace, args) -> int:
+    from . import insights
+
+    info = insights.build(ws, srs.parse_time(args.now) if args.now else None)
+    if args.json:
+        _print_json(info)
+        return 0
+    from . import dash
+
+    dash.render(info)
+    return 0
+
+
+def _statusline_cwd() -> str | None:
+    """Claude Code pipes JSON with the session's directory to the status-line command."""
+    import select
+
+    if sys.stdin is None or sys.stdin.isatty():
+        return None
+    try:
+        if not select.select([sys.stdin], [], [], 0.2)[0]:
+            return None
+        data = json.loads(sys.stdin.read() or "{}")
+    except (OSError, ValueError):
+        return None
+    ws_info = data.get("workspace") if isinstance(data, dict) else None
+    cwd = (ws_info or {}).get("current_dir") if isinstance(ws_info, dict) else None
+    return cwd or (data.get("cwd") if isinstance(data, dict) else None)
+
+
+def cmd_statusline(args) -> int:
+    """Never fails loudly: a status line shows whatever this prints, so errors print nothing."""
+    if args.install:
+        return _install_statusline(args)
+    try:
+        from . import insights
+
+        ws = find_workspace(args.root or _statusline_cwd())
+        print(insights.status_line(insights.build(ws, quick=True)))
+    except Exception:  # noqa: BLE001 - outside a notebook or on any error: empty status line
+        pass
+    return 0
+
+
+def _install_statusline(args) -> int:
+    import shlex
+    import shutil
+
+    try:
+        ws = find_workspace(args.root)
+    except WorkspaceError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    exe = Path(sys.argv[0]).resolve() if sys.argv and Path(sys.argv[0]).name == "eztudy" else None
+    exe = str(exe) if exe and exe.exists() else shutil.which("eztudy")
+    if not exe:
+        print("error: can't find the eztudy executable on PATH", file=sys.stderr)
+        return 1
+    want = {"type": "command", "command": f"{shlex.quote(exe)} statusline"}
+    path = ws.root / ".claude" / "settings.json"
+    try:
+        settings = json.loads(path.read_text()) if path.exists() else {}
+    except ValueError:
+        print(f"error: {path} is not valid JSON; fix it first", file=sys.stderr)
+        return 1
+    cur = settings.get("statusLine")
+    if cur == want:
+        print(f"already installed in {path}")
+        return 0
+    if cur and not args.force:
+        print(f"{path} already has a statusLine: {json.dumps(cur)}\nre-run with --force to replace it", file=sys.stderr)
+        return 1
+    settings["statusLine"] = want
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"set statusLine in {path}:\n  {json.dumps(want)}\nClaude Code sessions in this notebook now show it (restart open sessions).")
+    return 0
+
+
 # --- entry -----------------------------------------------------------------------
 
 
@@ -969,6 +1043,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.add_argument("--now", help=argparse.SUPPRESS)
 
+    s = sub.add_parser("dash", help="dashboard: what to study next, mastery, misses, reviews due, decks")
+    s.add_argument("--json", action="store_true", help="the same data as JSON (for the agent)")
+    s.add_argument("--now", help=argparse.SUPPRESS)
+
+    s = sub.add_parser("statusline", help="one-line summary for Claude Code's status line (reads its JSON on stdin)")
+    s.add_argument("--install", action="store_true", help="set it as the status line in this notebook's .claude/settings.json")
+    s.add_argument("--force", action="store_true", help="with --install: replace an existing statusLine")
+
     s = sub.add_parser("review", help="build and render a review quiz/deck from the items due now")
     s.add_argument("--deck", help="only this deck id")
     s.add_argument("--topic", help="only items with this topic or tag")
@@ -982,12 +1064,14 @@ COMMANDS = {
     "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
     "report": cmd_report, "progress": cmd_progress, "serve": cmd_serve,
-    "due": cmd_due, "review": cmd_review,
+    "due": cmd_due, "review": cmd_review, "dash": cmd_dash,
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "statusline":  # finds its notebook from Claude Code's JSON, and must never print an error
+        return cmd_statusline(args)
     try:
         ws = find_workspace(args.root)
     except WorkspaceError as e:
