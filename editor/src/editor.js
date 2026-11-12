@@ -103,6 +103,9 @@ export function createEditor(parent, o = {}) {
   if (mark >= 0) { cursor = mark; doc = doc.slice(0, mark) + doc.slice(mark + 2); }
   const readOnlyExt = (on) => [EditorState.readOnly.of(on), EditorView.editable.of(!on)];
   const ext = [
+    // Tab accepts an open suggestion (CodeMirror's completion keymap only binds Enter). With no suggestion open,
+    // acceptCompletion returns false and Tab falls through to Vim or indentWithTab as before.
+    state.Prec.highest(keymap.of([{ key: "Tab", run: autocomplete.acceptCompletion }])),
     vimC.of(o.vim && !o.readOnly ? vim({ status: true }) : []),  // must come before other keymaps
     lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), drawSelection(),
     commands.history(), indentOnInput(), bracketMatching(), autocomplete.closeBrackets(),
