@@ -98,7 +98,7 @@ eztudy progress [--json]          mastery by topic + problem items across all se
 eztudy due [--days N] [--json]    items the spaced-repetition schedule says to review now
 eztudy review [--limit 20]        build + render a review quiz/deck from the due items (study/review/)
 eztudy dash [--json]              dashboard: what to study next, mastery, misses, due reviews, decks
-eztudy tui [--open|--command]     live interactive dashboard (Textual; installed on first use)
+eztudy tui [--open|--command] [--theme panchi]   live interactive dashboard (Textual; installed on first use)
 eztudy statusline [--install]     one-line summary for Claude Code's status line
 ```
 

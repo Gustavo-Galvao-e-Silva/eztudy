@@ -62,3 +62,23 @@ def test_launch_command_and_fallback(ws, capsys, monkeypatch):
     monkeypatch.delenv("TMUX", raising=False)
     monkeypatch.setattr("sys.platform", "linux")
     assert tui.open_beside(ws).startswith("run this in another terminal")
+
+
+def test_panchi_themes_restyle_panels(ws):
+    from eztudy import dash
+
+    async def scenario():
+        app = tui.Dashboard(ws, "panchi")
+        async with app.run_test(size=(120, 40)) as pilot:
+            assert app.theme == "panchi" and "panchi-light" in app.available_themes
+            assert dash.S("brand") == "#FFB592"
+            app.theme = "panchi-light"  # what ctrl+p → Change theme does
+            await pilot.pause()
+            assert dash.S("brand") == "#805B49"
+            app.theme = "textual-dark"
+            await pilot.pause()
+            assert dash.S("brand") == "magenta"
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+    assert tui.launch_command(ws, "panchi").endswith("tui --theme panchi")

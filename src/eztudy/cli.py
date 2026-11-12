@@ -877,6 +877,7 @@ def cmd_dash(ws: Workspace, args) -> int:
         return 0
     from . import dash
 
+    dash.set_palette((ws.config.get("ui") or {}).get("tui_theme"))
     dash.render(info)
     return 0
 
@@ -890,16 +891,16 @@ def cmd_tui(ws: Workspace, args) -> int:
         args.json, args.now = False, None
         return cmd_dash(ws, args)
     if args.command:
-        print(tui.launch_command(ws))
+        print(tui.launch_command(ws, args.theme))
         return 0
     if args.open:
-        print(tui.open_beside(ws))
+        print(tui.open_beside(ws, args.theme))
         return 0
     if not sys.stdout.isatty():
         print("eztudy tui needs an interactive terminal; use `eztudy tui --open` to start it beside this one, "
               "or `eztudy dash` here", file=sys.stderr)
         return 2
-    tui.run(ws)
+    tui.run(ws, args.theme or (ws.config.get("ui") or {}).get("tui_theme"))
     return 0
 
 
@@ -1072,6 +1073,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("tui", help="live, interactive dashboard for a terminal pane (needs the `tui` extra)")
     s.add_argument("--open", action="store_true", help="start it beside this terminal (tmux split or a new Terminal window)")
     s.add_argument("--command", action="store_true", help="print a shell command that starts it from any terminal")
+    s.add_argument("--theme", help="panchi, panchi-light, or any Textual theme (default: [ui] tui_theme, else textual-dark)")
 
     s = sub.add_parser("statusline", help="one-line summary for Claude Code's status line (reads its JSON on stdin)")
     s.add_argument("--install", action="store_true", help="set it as the status line in this notebook's .claude/settings.json")
