@@ -215,7 +215,9 @@ exam = 2026-12-10        # countdown in the dashboard and status line
 If the user wants to keep the dashboard open while studying, run `eztudy tui --open`. It starts a live dashboard in a
 tmux split or a new Terminal window: it refreshes when quizzes finish, Enter on a recommendation starts a review or
 copies a quiz request to paste to you, and Enter on a deck opens it. `eztudy tui --command` prints the command
-instead, for the user to run in any terminal.
+instead, for the user to run in any terminal. Themes: `--theme panchi` / `panchi-light`
+(or `[ui] tui_theme = "panchi"` in `.eztudy/config.toml`, which `eztudy dash` also follows), or any Textual theme
+from ctrl+p → Change theme.
 Once per notebook, offer the Claude Code status line (`eztudy statusline --install` writes this notebook's
 `.claude/settings.json`). Run it only if the user agrees. It never replaces another status line without `--force`.
 

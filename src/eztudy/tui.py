@@ -18,13 +18,24 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import DataTable, Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from . import dash, insights, srs
+from . import dash, insights, prefs, srs
 from .workspace import Workspace
 
 REFRESH_S = 2.0
+
+# panchi: peach #FFB592, brown #805B49, warm grey #8F8984, charcoal #45423F (status colours derived to match).
+THEMES = [
+    Theme(name="panchi", primary="#FFB592", secondary="#805B49", accent="#FFB592", foreground="#EDE6E1",
+          background="#2A2826", surface="#34312F", panel="#45423F", warning="#F2C48D", error="#E07A5F",
+          success="#B5C99A", dark=True),
+    Theme(name="panchi-light", primary="#805B49", secondary="#8F8984", accent="#805B49", foreground="#45423F",
+          background="#FAF6F3", surface="#F2EBE6", panel="#E8DFD8", warning="#A8722A", error="#B5523B",
+          success="#5E7A4A", dark=False),
+]
 
 
 def cli_command(ws: Workspace, *args: str) -> list[str]:
@@ -63,7 +74,7 @@ class DueScreen(ModalScreen):
         for c in srs.due(sched, within_days=7):
             d = c["overdue_days"]
             when = (f"{d * 24:.0f}h" if abs(d) < 1 else f"{abs(d):.0f}d") + (" overdue" if d >= 0 else "")
-            table.add_row(Text(when if d >= 0 else "in " + when, style="yellow" if d >= 0 else "dim"),
+            table.add_row(Text(when if d >= 0 else "in " + when, style=dash.S("warn") if d >= 0 else dash.S("muted")),
                           f"{c['retrievability']:.0%}", "card" if c["kind"] == "flashcards" else "quiz",
                           f"{c['deck']} / {c['id']}", c["prompt"][:70])
         with VerticalScroll():
@@ -92,11 +103,14 @@ class Dashboard(App):
         Binding("q", "quit", "Quit"),
     ]
 
-    def __init__(self, ws: Workspace):
+    def __init__(self, ws: Workspace, theme: str | None = None):
         super().__init__()
         self.ws = ws
         self.info: dict = {}
         self.sig: tuple | None = None
+        for t in THEMES:
+            self.register_theme(t)
+        self.start_theme = theme
 
     def compose(self) -> ComposeResult:
         yield Static(id="header")
@@ -112,10 +126,23 @@ class Dashboard(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        if self.start_theme in self.available_themes:
+            self.theme = self.start_theme
+        elif self.start_theme:
+            self.notify(f"Unknown theme {self.start_theme!r}; pick one with ctrl+p → Change theme", severity="warning")
+        dash.set_palette(self.theme)
+        # Panels are Rich renderables coloured by dash's palette: repaint them when the theme changes (ctrl+p),
+        # and remember the choice for next time.
+        self.theme_changed_signal.subscribe(self, self.theme_picked)
         self.query_one("#recs", OptionList).border_title = "Next up · enter to act"
         self.query_one("#decks", DataTable).border_title = "Decks · enter to open"
         self.load()
         self.set_interval(REFRESH_S, self.poll)
+
+    def theme_picked(self, theme) -> None:
+        dash.set_palette(theme.name)
+        prefs.save(tui_theme=theme.name)
+        self.load()
 
     # --- data ---------------------------------------------------------------------------
 
@@ -133,11 +160,11 @@ class Dashboard(App):
         recs.clear_options()
         if info["recommend"]:
             for n, r in enumerate(info["recommend"], start=1):
-                recs.add_option(Option(Text.assemble((f"{n}. {r['topic']}\n", "bold"), (" · ".join(r["reasons"]) + "\n", "dim"),
-                                                     ("→ " + r["action"], "cyan")), id=f"rec-{n - 1}"))
+                recs.add_option(Option(Text.assemble((f"{n}. {r['topic']}\n", "bold"), (" · ".join(r["reasons"]) + "\n", dash.S("muted")),
+                                                     ("→ " + r["action"], dash.S("action"))), id=f"rec-{n - 1}"))
             recs.highlighted = min(keep or 0, len(info["recommend"]) - 1)
         else:
-            recs.add_option(Option(Text("Nothing pressing. Finish a quiz, or ask the agent for new material.", style="dim"),
+            recs.add_option(Option(Text("Nothing pressing. Finish a quiz, or ask the agent for new material.", style=dash.S("muted")),
                                    disabled=True))
         miss = dash.missing(info)
         self.query_one("#missing", Static).update(miss or "")
@@ -146,15 +173,18 @@ class Dashboard(App):
         table = self.query_one("#decks", DataTable)
         row = table.cursor_row
         table.clear(columns=True)
-        table.add_columns("deck", "kind", "items", "due", "last")
-        for d in [d for d in info.get("decks", []) if not d["review"]] + [d for d in info.get("decks", []) if d["review"]][:3]:
+        shown = [d for d in info.get("decks", []) if not d["review"]] + [d for d in info.get("decks", []) if d["review"]][:3]
+        # Explicit width: auto-sizing after clear(columns=True) can collapse the column on a redraw.
+        table.add_column("deck", width=max([4] + [min(48, len(d["title"])) for d in shown]))
+        table.add_columns("kind", "items", "due", "last")
+        for d in shown:
             last = f"{d['last_score']:.0%}" if d["last_score"] is not None else "—"
             table.add_row(d["title"], "cards" if d["kind"] == "flashcards" else "quiz", str(d["items"]),
-                          Text(str(d["due"]), style="bold yellow") if d["due"] else Text("0", style="dim"), last, key=d["path"])
+                          Text(str(d["due"]), style=dash.S("warn", True)) if d["due"] else Text("0", style=dash.S("muted")), last, key=d["path"])
         if table.row_count:
             table.move_cursor(row=min(row, table.row_count - 1))
         foot = dash.footer(info)
-        self.query_one("#hint", Static).update(foot or Text(f"refreshes on its own · {self.ws.root}", style="dim"))
+        self.query_one("#hint", Static).update(foot or Text(f"refreshes on its own · {self.ws.root}", style=dash.S("muted")))
 
     def action_refresh(self) -> None:
         self.load()
@@ -202,25 +232,25 @@ class Dashboard(App):
         self.open_page(str(event.row_key.value))
 
 
-def run(ws: Workspace) -> None:
-    Dashboard(ws).run()
+def run(ws: Workspace, theme: str | None = None) -> None:
+    Dashboard(ws, theme).run()
 
 
-def launch_command(ws: Workspace) -> str:
+def launch_command(ws: Workspace, theme: str | None = None) -> str:
     """A shell command that starts the TUI for this notebook from any terminal."""
     import shlex
 
     exe = os.environ.get("EZTUDY_BIN") or (sys.argv[0] if Path(sys.argv[0]).name == "eztudy" else None)
     base = [str(Path(exe).resolve())] if exe else [sys.executable, "-m", "eztudy.cli"]
-    return shlex.join([*base, "-C", str(ws.root), "tui"])
+    return shlex.join([*base, "-C", str(ws.root), "tui", *(["--theme", theme] if theme else [])])
 
 
-def open_beside(ws: Workspace) -> str:
+def open_beside(ws: Workspace, theme: str | None = None) -> str:
     """Start the TUI next to the current terminal: a tmux split, else a new macOS Terminal window.
     Returns what happened, for the caller to print."""
     import shutil
 
-    cmd = launch_command(ws)
+    cmd = launch_command(ws, theme)
     if os.environ.get("TMUX") and shutil.which("tmux"):
         subprocess.run(["tmux", "split-window", "-h", "-l", "45%", cmd], check=True)
         return "opened in a tmux split to the right"
