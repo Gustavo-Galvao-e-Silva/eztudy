@@ -22,7 +22,7 @@ from textual.theme import Theme
 from textual.widgets import DataTable, Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from . import dash, insights, srs
+from . import dash, insights, prefs, srs
 from .workspace import Workspace
 
 REFRESH_S = 2.0
@@ -131,12 +131,18 @@ class Dashboard(App):
         elif self.start_theme:
             self.notify(f"Unknown theme {self.start_theme!r}; pick one with ctrl+p → Change theme", severity="warning")
         dash.set_palette(self.theme)
-        # Panels are Rich renderables coloured by dash's palette: repaint them when the theme changes (ctrl+p).
-        self.theme_changed_signal.subscribe(self, lambda theme: (dash.set_palette(theme.name), self.load()))
+        # Panels are Rich renderables coloured by dash's palette: repaint them when the theme changes (ctrl+p),
+        # and remember the choice for next time.
+        self.theme_changed_signal.subscribe(self, self.theme_picked)
         self.query_one("#recs", OptionList).border_title = "Next up · enter to act"
         self.query_one("#decks", DataTable).border_title = "Decks · enter to open"
         self.load()
         self.set_interval(REFRESH_S, self.poll)
+
+    def theme_picked(self, theme) -> None:
+        dash.set_palette(theme.name)
+        prefs.save(tui_theme=theme.name)
+        self.load()
 
     # --- data ---------------------------------------------------------------------------
 

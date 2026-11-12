@@ -82,3 +82,29 @@ def test_panchi_themes_restyle_panels(ws):
 
     asyncio.run(scenario())
     assert tui.launch_command(ws, "panchi").endswith("tui --theme panchi")
+
+
+def test_theme_choice_is_remembered(ws, monkeypatch, tmp_path):
+    from eztudy import prefs
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    assert prefs.tui_theme({"ui": {"tui_theme": "panchi-light"}}) == "panchi-light"  # config when nothing picked
+
+    async def pick():
+        app = tui.Dashboard(ws)
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.theme = "panchi"  # ctrl+p → Change theme
+            await pilot.pause()
+            await pilot.press("q")
+
+    asyncio.run(pick())
+    assert prefs.load()["tui_theme"] == "panchi"
+    assert prefs.tui_theme({"ui": {"tui_theme": "panchi-light"}}) == "panchi"  # the last pick wins over config
+
+    async def reopen():
+        app = tui.Dashboard(ws, prefs.tui_theme(ws.config))
+        async with app.run_test(size=(100, 30)) as pilot:
+            assert app.theme == "panchi"
+            await pilot.press("q")
+
+    asyncio.run(reopen())

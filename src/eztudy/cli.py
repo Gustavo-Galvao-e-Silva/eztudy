@@ -877,7 +877,9 @@ def cmd_dash(ws: Workspace, args) -> int:
         return 0
     from . import dash
 
-    dash.set_palette((ws.config.get("ui") or {}).get("tui_theme"))
+    from . import prefs
+
+    dash.set_palette(prefs.tui_theme(ws.config))
     dash.render(info)
     return 0
 
@@ -900,7 +902,9 @@ def cmd_tui(ws: Workspace, args) -> int:
         print("eztudy tui needs an interactive terminal; use `eztudy tui --open` to start it beside this one, "
               "or `eztudy dash` here", file=sys.stderr)
         return 2
-    tui.run(ws, args.theme or (ws.config.get("ui") or {}).get("tui_theme"))
+    from . import prefs
+
+    tui.run(ws, args.theme or prefs.tui_theme(ws.config))
     return 0
 
 

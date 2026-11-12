@@ -51,6 +51,8 @@ The plugin puts `eztudy` on the agent's PATH and adds the `eztudy` skill.
 
 ## Use
 
+**New here? Start with the [quick guide](docs/quick-guide.md):** practising, reviews, the dashboard, the TUI and settings on one page.
+
 ```bash
 mkdir -p ~/notebooks/biology/sources && cp ~/Downloads/*.pdf ~/notebooks/biology/sources/
 cd ~/notebooks/biology && claude
