@@ -12,4 +12,9 @@ case "$ROOT" in
     export UV_PROJECT_ENVIRONMENT ;;
 esac
 
-exec uv run --quiet --frozen --project "$ROOT" eztudy "$@"
+# The interactive dashboard needs the optional `tui` extra; `uv run` adds it without removing anything.
+EXTRA=""
+for arg in "$@"; do [ "$arg" = tui ] && EXTRA="--extra tui" && break; done
+export EZTUDY_BIN="$SELF"  # lets `eztudy tui --open` print a command that runs this wrapper
+
+exec uv run --quiet --frozen $EXTRA --project "$ROOT" eztudy "$@"

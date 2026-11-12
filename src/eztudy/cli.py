@@ -881,6 +881,28 @@ def cmd_dash(ws: Workspace, args) -> int:
     return 0
 
 
+def cmd_tui(ws: Workspace, args) -> int:
+    try:
+        from . import tui
+    except ImportError:
+        print("the interactive dashboard needs the `tui` extra: pip install 'eztudy[tui]' "
+              "(in a checkout: uv sync --extra tui). Showing the static dashboard instead.\n", file=sys.stderr)
+        args.json, args.now = False, None
+        return cmd_dash(ws, args)
+    if args.command:
+        print(tui.launch_command(ws))
+        return 0
+    if args.open:
+        print(tui.open_beside(ws))
+        return 0
+    if not sys.stdout.isatty():
+        print("eztudy tui needs an interactive terminal; use `eztudy tui --open` to start it beside this one, "
+              "or `eztudy dash` here", file=sys.stderr)
+        return 2
+    tui.run(ws)
+    return 0
+
+
 def _statusline_cwd() -> str | None:
     """Claude Code pipes JSON with the session's directory to the status-line command."""
     import select
@@ -1047,6 +1069,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true", help="the same data as JSON (for the agent)")
     s.add_argument("--now", help=argparse.SUPPRESS)
 
+    s = sub.add_parser("tui", help="live, interactive dashboard for a terminal pane (needs the `tui` extra)")
+    s.add_argument("--open", action="store_true", help="start it beside this terminal (tmux split or a new Terminal window)")
+    s.add_argument("--command", action="store_true", help="print a shell command that starts it from any terminal")
+
     s = sub.add_parser("statusline", help="one-line summary for Claude Code's status line (reads its JSON on stdin)")
     s.add_argument("--install", action="store_true", help="set it as the status line in this notebook's .claude/settings.json")
     s.add_argument("--force", action="store_true", help="with --install: replace an existing statusLine")
@@ -1064,7 +1090,7 @@ COMMANDS = {
     "status": cmd_status, "add": cmd_add, "sync": cmd_sync, "index": cmd_index, "search": cmd_search,
     "show": cmd_show, "coverage": cmd_coverage, "sources": cmd_sources, "wiki": cmd_wiki, "render": cmd_render,
     "report": cmd_report, "progress": cmd_progress, "serve": cmd_serve,
-    "due": cmd_due, "review": cmd_review, "dash": cmd_dash,
+    "due": cmd_due, "review": cmd_review, "dash": cmd_dash, "tui": cmd_tui,
 }
 
 

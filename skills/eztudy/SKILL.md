@@ -49,6 +49,7 @@ eztudy due [--deck ID] [--topic T] [--days N] [--json]   # items the spaced-repe
 eztudy review [--limit 20] [--deck ID] [--topic T]       # write + render study/review/review-<date>.json (and -cards.json) from due items
 eztudy dash [--json]               # dashboard: recommended topics (with reasons + next command), mastery, still-missed
                                    # items, due counts, streak, exam countdown, decks; --json is the same data for you
+eztudy tui --open                  # live interactive dashboard beside Claude Code (tmux split or a new Terminal window)
 eztudy statusline --install        # show "📚 12 due · focus: Heaps, AVL · exam in 9d" in Claude Code's status line (this notebook)
 ```
 
@@ -211,6 +212,10 @@ the exam date or syllabus:
 syllabus = "topics.md"   # Markdown list of exam topics: unpractised ones get recommended
 exam = 2026-12-10        # countdown in the dashboard and status line
 ```
+If the user wants to keep the dashboard open while studying, run `eztudy tui --open`. It starts a live dashboard in a
+tmux split or a new Terminal window: it refreshes when quizzes finish, Enter on a recommendation starts a review or
+copies a quiz request to paste to you, and Enter on a deck opens it. `eztudy tui --command` prints the command
+instead, for the user to run in any terminal.
 Once per notebook, offer the Claude Code status line (`eztudy statusline --install` writes this notebook's
 `.claude/settings.json`). Run it only if the user agrees. It never replaces another status line without `--force`.
 
