@@ -68,7 +68,9 @@ back the next day, and each success pushes the item further out. `eztudy status`
 `eztudy dash` shows what to study next and why (reviews due, weak topics, items you keep missing, syllabus
 topics you haven't practised), along with mastery bars, recent scores, decks, your streak and an exam countdown. Ask
 the agent "what should I study?" and it reads the same data. `eztudy statusline --install` puts a one-line summary in
-Claude Code's status bar for that notebook, e.g. `📚 12 due · focus: Heaps, AVL · exam in 9d`.
+Claude Code's status bar for that notebook, e.g. `📚 12 due · focus: Heaps, AVL · exam in 9d`. For a live
+version beside Claude Code, `eztudy tui --open` starts an interactive dashboard in a tmux split or a new Terminal window.
+It refreshes as you finish quizzes, and Enter on a recommendation starts a review or copies a request for the agent.
 
 Each citation under an answer is a link: it opens the source at the cited page (PDFs) or lines (code and
 text), so you can check the answer against your material in one click.
@@ -96,6 +98,7 @@ eztudy progress [--json]          mastery by topic + problem items across all se
 eztudy due [--days N] [--json]    items the spaced-repetition schedule says to review now
 eztudy review [--limit 20]        build + render a review quiz/deck from the due items (study/review/)
 eztudy dash [--json]              dashboard: what to study next, mastery, misses, due reviews, decks
+eztudy tui [--open|--command]     live interactive dashboard (Textual; installed on first use)
 eztudy statusline [--install]     one-line summary for Claude Code's status line
 ```
 

@@ -18,6 +18,11 @@ dependencies = [
 [project.scripts]
 eztudy = "eztudy.cli:main"
 
+[project.optional-dependencies]
+tui = [
+    "textual>=0.80",
+]
+
 [dependency-groups]
 dev = ["pytest>=8"]
 
