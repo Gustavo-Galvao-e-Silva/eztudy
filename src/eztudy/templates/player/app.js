@@ -564,8 +564,8 @@ function quiz(items) {
     if (it.type === "multi") st.sel.has(i) ? st.sel.delete(i) : st.sel.add(i);
     else st.sel = new Set([i]);
     if (instant && it.type !== "multi") return confirmAnswer(qi);
-    // Update in place: selecting never reveals anything.
-    stage.querySelectorAll(".opt").forEach((b, j) => b.setAttribute("aria-checked", String(st.sel.has(j))));
+    // Update in place: selecting never reveals anything. Buttons are in display order (st.perm); sel holds original indices.
+    stage.querySelectorAll(".opt").forEach((b, j) => b.setAttribute("aria-checked", String(st.sel.has(st.perm[j]))));
     const c = $("#confirm"); if (c) c.disabled = !st.sel.size;
   }
   function confirmAnswer(qi) {
