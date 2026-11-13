@@ -1,6 +1,6 @@
 [project]
 name = "eztudy"
-version = "0.7.0"
+version = "0.7.1"
 description = "Local, open-source NotebookLM substitute as an agent skill: wiki + SQLite vector index over a sources/ dir."
 readme = "README.md"
 license = { text = "MIT" }
